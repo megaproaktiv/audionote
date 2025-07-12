@@ -1,0 +1,18 @@
+Write a technical blog post in markdown from the text.
+
+In the form:
+# Headline
+
+abstract
+
+## Fact 1
+
+lorem ipso
+
+## Fact 2
+
+lorem ipso
+
+## Summary
+
+lorem ipso

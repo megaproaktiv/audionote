@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -13,29 +16,136 @@ import (
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/spf13/viper"
 )
+
+// Config structure for storing application settings
+type Config struct {
+	LastActionType string `mapstructure:"last_action_type"`
+	LastLanguage   string `mapstructure:"last_language"`
+}
+
+// loadPromptFiles reads all prompt-*.txt files from the config directory
+func loadPromptFiles() ([]string, error) {
+	var actionTypes []string
+	
+	err := filepath.WalkDir("./config", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		
+		if !d.IsDir() && strings.HasPrefix(d.Name(), "prompt-") && strings.HasSuffix(d.Name(), ".txt") {
+			// Extract action type from filename: prompt-ACTION.txt -> ACTION
+			actionType := strings.TrimPrefix(d.Name(), "prompt-")
+			actionType = strings.TrimSuffix(actionType, ".txt")
+			actionTypes = append(actionTypes, actionType)
+		}
+		
+		return nil
+	})
+	
+	return actionTypes, err
+}
+
+// initConfig initializes Viper configuration
+func initConfig() *Config {
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath("./config")
+	
+	// Set defaults
+	viper.SetDefault("last_action_type", "")
+	viper.SetDefault("last_language", "en-US")
+	
+	// Try to read existing config
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			// Config file not found, create it
+			fmt.Println("Config file not found, creating new one...")
+		} else {
+			fmt.Printf("Error reading config file: %v\n", err)
+		}
+	}
+	
+	var config Config
+	if err := viper.Unmarshal(&config); err != nil {
+		fmt.Printf("Error unmarshaling config: %v\n", err)
+	}
+	
+	return &config
+}
+
+// saveConfig saves the current configuration
+func saveConfig(config *Config) {
+	viper.Set("last_action_type", config.LastActionType)
+	viper.Set("last_language", config.LastLanguage)
+	
+	// Ensure config directory exists
+	if err := os.MkdirAll("./config", 0755); err != nil {
+		fmt.Printf("Error creating config directory: %v\n", err)
+		return
+	}
+	
+	if err := viper.WriteConfigAs("./config/config.yaml"); err != nil {
+		fmt.Printf("Error writing config file: %v\n", err)
+	} else {
+		fmt.Println("Configuration saved successfully")
+	}
+}
 
 func main() {
 	a := app.New()
 	w := a.NewWindow("Audio Note Configuration")
 	w.Resize(fyne.NewSize(450, 350))
 
+	// Initialize configuration
+	config := initConfig()
+	
+	// Load prompt files to populate action types
+	actionTypes, err := loadPromptFiles()
+	if err != nil {
+		fmt.Printf("Error loading prompt files: %v\n", err)
+		actionTypes = []string{"summary", "call to action", "criticize"} // fallback
+	}
+	
+	if len(actionTypes) == 0 {
+		actionTypes = []string{"summary", "call to action", "criticize"} // fallback
+	}
+	
+	fmt.Printf("Loaded action types: %v\n", actionTypes)
+
 	// Create the select widgets
 	actionSelect := widget.NewSelect(
-		[]string{"summary", "call to action", "criticize"},
+		actionTypes,
 		func(value string) {
 			fmt.Printf("Action selected: %s\n", value)
+			config.LastActionType = value
 		},
 	)
-	actionSelect.SetSelected("summary") // Set default selection
+	
+	// Set default selection from config or first available option
+	defaultAction := config.LastActionType
+	if defaultAction == "" || !contains(actionTypes, defaultAction) {
+		defaultAction = actionTypes[0]
+	}
+	actionSelect.SetSelected(defaultAction)
+	config.LastActionType = defaultAction
 
 	languageSelect := widget.NewSelect(
 		[]string{"en-US", "de-DE"},
 		func(value string) {
 			fmt.Printf("Language selected: %s\n", value)
+			config.LastLanguage = value
 		},
 	)
-	languageSelect.SetSelected("en-US") // Set default selection
+	
+	// Set default language from config
+	if config.LastLanguage != "" {
+		languageSelect.SetSelected(config.LastLanguage)
+	} else {
+		languageSelect.SetSelected("en-US")
+		config.LastLanguage = "en-US"
+	}
 
 	// Create file selector for audio files
 	var selectedFilePath string
@@ -75,6 +185,9 @@ func main() {
 			dialog.ShowInformation("No File Selected", "Please select an audio file first.", w)
 			return
 		}
+		
+		// Save current configuration
+		saveConfig(config)
 		
 		fmt.Printf("Starting process with Action: %s, Language: %s, File: %s\n", action, language, selectedFilePath)
 		
@@ -135,5 +248,22 @@ func main() {
 	paddedContent := container.NewPadded(content)
 
 	w.SetContent(paddedContent)
+	
+	// Save config when window closes
+	w.SetCloseIntercept(func() {
+		saveConfig(config)
+		w.Close()
+	})
+	
 	w.ShowAndRun()
+}
+
+// Helper function to check if a slice contains a string
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }
