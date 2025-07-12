@@ -2,10 +2,8 @@ package main
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -16,97 +14,9 @@ import (
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/spf13/viper"
+
+	"github.com/megaproaktiv/audionote-config/configuration"
 )
-
-// Config structure for storing application settings
-type Config struct {
-	LastActionType string `mapstructure:"last_action_type"`
-	LastLanguage   string `mapstructure:"last_language"`
-	LastDirectory  string `mapstructure:"last_directory"`
-}
-
-// loadPromptFiles reads all prompt-*.txt files from the config directory
-func loadPromptFiles() ([]string, error) {
-	var actionTypes []string
-	
-	err := filepath.WalkDir("./config", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		
-		if !d.IsDir() && strings.HasPrefix(d.Name(), "prompt-") && strings.HasSuffix(d.Name(), ".txt") {
-			// Extract action type from filename: prompt-ACTION.txt -> ACTION
-			actionType := strings.TrimPrefix(d.Name(), "prompt-")
-			actionType = strings.TrimSuffix(actionType, ".txt")
-			actionTypes = append(actionTypes, actionType)
-		}
-		
-		return nil
-	})
-	
-	return actionTypes, err
-}
-
-// initConfig initializes Viper configuration
-func initConfig() *Config {
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath("./config")
-	
-	// Get user's Documents directory as default
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		homeDir = "."
-	}
-	documentsDir := filepath.Join(homeDir, "Documents")
-	
-	// Set defaults
-	viper.SetDefault("last_action_type", "")
-	viper.SetDefault("last_language", "en-US")
-	viper.SetDefault("last_directory", documentsDir)
-	
-	// Try to read existing config
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			// Config file not found, create it
-			fmt.Println("Config file not found, creating new one...")
-		} else {
-			fmt.Printf("Error reading config file: %v\n", err)
-		}
-	}
-	
-	var config Config
-	if err := viper.Unmarshal(&config); err != nil {
-		fmt.Printf("Error unmarshaling config: %v\n", err)
-	}
-	
-	// Ensure last directory exists, fallback to Documents if not
-	if config.LastDirectory == "" || !dirExists(config.LastDirectory) {
-		config.LastDirectory = documentsDir
-	}
-	
-	return &config
-}
-
-// saveConfig saves the current configuration
-func saveConfig(config *Config) {
-	viper.Set("last_action_type", config.LastActionType)
-	viper.Set("last_language", config.LastLanguage)
-	viper.Set("last_directory", config.LastDirectory)
-	
-	// Ensure config directory exists
-	if err := os.MkdirAll("./config", 0755); err != nil {
-		fmt.Printf("Error creating config directory: %v\n", err)
-		return
-	}
-	
-	if err := viper.WriteConfigAs("./config/config.yaml"); err != nil {
-		fmt.Printf("Error writing config file: %v\n", err)
-	} else {
-		fmt.Println("Configuration saved successfully")
-	}
-}
 
 func main() {
 	a := app.New()
@@ -114,10 +24,10 @@ func main() {
 	w.Resize(fyne.NewSize(500, 400))
 
 	// Initialize configuration
-	config := initConfig()
+	config := configuration.InitConfig()
 	
 	// Load prompt files to populate action types
-	actionTypes, err := loadPromptFiles()
+	actionTypes, err := configuration.LoadPromptFiles()
 	if err != nil {
 		fmt.Printf("Error loading prompt files: %v\n", err)
 		actionTypes = []string{"summary", "call to action", "criticize"} // fallback
@@ -140,7 +50,7 @@ func main() {
 	
 	// Set default selection from config or first available option
 	defaultAction := config.LastActionType
-	if defaultAction == "" || !contains(actionTypes, defaultAction) {
+	if defaultAction == "" || !configuration.Contains(actionTypes, defaultAction) {
 		defaultAction = actionTypes[0]
 	}
 	actionSelect.SetSelected(defaultAction)
@@ -170,16 +80,16 @@ func main() {
 	fileSelector = widget.NewButton("Select Audio File", func() {
 		// Store current directory to restore later
 		currentDir, _ := os.Getwd()
+		fmt.Printf("Current working directory: %s\n", currentDir)
 		
-		// Change to the last used directory if it exists
-		if config.LastDirectory != "" && dirExists(config.LastDirectory) {
-			os.Chdir(config.LastDirectory)
-			fmt.Printf("Changed to directory: %s\n", config.LastDirectory)
+		// Set the directory for the dialog
+		if err := config.SetDirectoryForDialog(); err != nil {
+			fmt.Printf("Could not set directory: %v\n", err)
 		}
 		
 		dialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-			// Restore original directory
-			os.Chdir(currentDir)
+			// Always restore original directory first
+			configuration.RestoreDirectory(currentDir)
 			
 			if err != nil {
 				fmt.Printf("Error selecting file: %v\n", err)
@@ -203,7 +113,18 @@ func main() {
 		// Set file filter for only m4a and mp3 files
 		dialog.SetFilter(storage.NewExtensionFileFilter([]string{".mp3", ".m4a"}))
 		
-		fmt.Printf("Opening file dialog in directory: %s\n", config.LastDirectory)
+		// Also try to set location via URI (additional method)
+		if dirURI := config.GetDirectoryURI(); dirURI != nil {
+			// Try to cast to ListableURI for SetLocation
+			if listableURI, ok := dirURI.(fyne.ListableURI); ok {
+				dialog.SetLocation(listableURI)
+				fmt.Printf("Also set dialog URI location to: %s\n", config.LastDirectory)
+			} else {
+				fmt.Printf("URI is not listable, relying on directory change method\n")
+			}
+		}
+		
+		fmt.Printf("Opening file dialog (should start in: %s)\n", config.LastDirectory)
 		dialog.Show()
 	})
 
@@ -223,7 +144,7 @@ func main() {
 		}
 		
 		// Save current configuration
-		saveConfig(config)
+		config.Save()
 		
 		fmt.Printf("Starting process with Action: %s, Language: %s, File: %s\n", action, language, selectedFilePath)
 		
@@ -292,28 +213,9 @@ func main() {
 	
 	// Save config when window closes
 	w.SetCloseIntercept(func() {
-		saveConfig(config)
+		config.Save()
 		w.Close()
 	})
 	
 	w.ShowAndRun()
-}
-
-// Helper function to check if a slice contains a string
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
-}
-
-// Helper function to check if directory exists
-func dirExists(path string) bool {
-	info, err := os.Stat(path)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return info.IsDir()
 }
