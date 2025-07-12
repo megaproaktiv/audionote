@@ -5,6 +5,15 @@
 3. Start Button: A button with a play icon that triggers the process
 4. Progress Bar: Shows progress when the start button is clicked
 
+## New Features:
+
+1. Audio File Selector: A button labeled "Select Audio File" that opens a file dialog
+2. File Filtering: The dialog filters for common audio file formats (.mp3, .wav, .m4a, .aac, .ogg, .flac)
+3. Visual Feedback: Once a file is selected, the button text changes to show the selected filename
+4. Validation: The start button now checks if a file is selected before proceeding
+5. Enhanced Layout: Added the file selector to the configuration card with proper labeling and separators
+
+
 ## Pleasant Layout Features:
 
 • **Card Layout**: The selects are organized in a card with a title and description
