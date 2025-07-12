@@ -85,3 +85,43 @@ last_language: de-DE
 
 The application now dynamically adapts to your prompt files and maintains user preferences across sessions, providing
 a much more personalized and flexible experience!
+
+### 1. Directory Persistence
+• Added LastDirectory field to the configuration structure
+• Stores and retrieves the last directory used for file selection
+• Configuration is saved to config.yaml and persists across app restarts
+
+### 2. Smart Directory Starting Location
+• File dialog now starts in the last used directory
+• Uses os.Chdir() approach to change to the stored directory before opening the dialog
+• Restores the original working directory after file selection
+
+### 3. Default to Documents Directory
+• On first run, defaults to the user's Documents directory (~/Documents)
+• Falls back gracefully if Documents directory doesn't exist
+
+### 4. File Filter Restriction
+• File dialog now only shows .mp3 and .m4a files
+• Removed other audio formats as requested
+• Provides cleaner, more focused file selection
+
+### 5. Visual Directory Display
+• Shows current directory in an italic label below the file selector
+• Updates in real-time when a new directory is selected
+• Provides clear feedback about where files will be opened from
+
+## Updated Configuration Structure:
+yaml
+last_action_type: paper
+last_directory: /tmp/test_audio
+last_language: de-DE
+
+
+## How Directory Navigation Works:
+
+1. Startup: Application loads the last used directory from config
+2. Display: Shows current directory in the UI
+3. File Dialog: When opened, temporarily changes to the stored directory
+4. File Selection: User sees files from the last used location first
+5. Directory Update: When a file is selected, the new directory is automatically saved
+6. Restoration: Original working directory is restored after dialog closes

@@ -23,6 +23,7 @@ import (
 type Config struct {
 	LastActionType string `mapstructure:"last_action_type"`
 	LastLanguage   string `mapstructure:"last_language"`
+	LastDirectory  string `mapstructure:"last_directory"`
 }
 
 // loadPromptFiles reads all prompt-*.txt files from the config directory
@@ -53,9 +54,17 @@ func initConfig() *Config {
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath("./config")
 	
+	// Get user's Documents directory as default
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		homeDir = "."
+	}
+	documentsDir := filepath.Join(homeDir, "Documents")
+	
 	// Set defaults
 	viper.SetDefault("last_action_type", "")
 	viper.SetDefault("last_language", "en-US")
+	viper.SetDefault("last_directory", documentsDir)
 	
 	// Try to read existing config
 	if err := viper.ReadInConfig(); err != nil {
@@ -72,6 +81,11 @@ func initConfig() *Config {
 		fmt.Printf("Error unmarshaling config: %v\n", err)
 	}
 	
+	// Ensure last directory exists, fallback to Documents if not
+	if config.LastDirectory == "" || !dirExists(config.LastDirectory) {
+		config.LastDirectory = documentsDir
+	}
+	
 	return &config
 }
 
@@ -79,6 +93,7 @@ func initConfig() *Config {
 func saveConfig(config *Config) {
 	viper.Set("last_action_type", config.LastActionType)
 	viper.Set("last_language", config.LastLanguage)
+	viper.Set("last_directory", config.LastDirectory)
 	
 	// Ensure config directory exists
 	if err := os.MkdirAll("./config", 0755); err != nil {
@@ -96,7 +111,7 @@ func saveConfig(config *Config) {
 func main() {
 	a := app.New()
 	w := a.NewWindow("Audio Note Configuration")
-	w.Resize(fyne.NewSize(450, 350))
+	w.Resize(fyne.NewSize(500, 400))
 
 	// Initialize configuration
 	config := initConfig()
@@ -150,8 +165,22 @@ func main() {
 	// Create file selector for audio files
 	var selectedFilePath string
 	var fileSelector *widget.Button
+	var directoryLabel *widget.Label
+	
 	fileSelector = widget.NewButton("Select Audio File", func() {
+		// Store current directory to restore later
+		currentDir, _ := os.Getwd()
+		
+		// Change to the last used directory if it exists
+		if config.LastDirectory != "" && dirExists(config.LastDirectory) {
+			os.Chdir(config.LastDirectory)
+			fmt.Printf("Changed to directory: %s\n", config.LastDirectory)
+		}
+		
 		dialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+			// Restore original directory
+			os.Chdir(currentDir)
+			
 			if err != nil {
 				fmt.Printf("Error selecting file: %v\n", err)
 				return
@@ -164,10 +193,17 @@ func main() {
 			selectedFilePath = reader.URI().Path()
 			fileSelector.SetText(fmt.Sprintf("Selected: %s", filepath.Base(selectedFilePath)))
 			fmt.Printf("Audio file selected: %s\n", selectedFilePath)
+			
+			// Update last used directory
+			config.LastDirectory = filepath.Dir(selectedFilePath)
+			directoryLabel.SetText(fmt.Sprintf("Directory: %s", config.LastDirectory))
+			fmt.Printf("Updated last directory to: %s\n", config.LastDirectory)
 		}, w)
 		
-		// Set file filter for audio files
-		dialog.SetFilter(storage.NewExtensionFileFilter([]string{".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"}))
+		// Set file filter for only m4a and mp3 files
+		dialog.SetFilter(storage.NewExtensionFileFilter([]string{".mp3", ".m4a"}))
+		
+		fmt.Printf("Opening file dialog in directory: %s\n", config.LastDirectory)
 		dialog.Show()
 	})
 
@@ -214,6 +250,10 @@ func main() {
 	fileLabel := widget.NewLabel("Audio File:")
 	fileLabel.TextStyle.Bold = true
 	
+	// Directory display label
+	directoryLabel = widget.NewLabel(fmt.Sprintf("Directory: %s", config.LastDirectory))
+	directoryLabel.TextStyle.Italic = true
+	
 	progressLabel := widget.NewLabel("Progress:")
 	progressLabel.TextStyle.Bold = true
 
@@ -229,6 +269,7 @@ func main() {
 				widget.NewSeparator(),
 				fileLabel,
 				fileSelector,
+				directoryLabel,
 			),
 		),
 		widget.NewSeparator(),
@@ -266,4 +307,13 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+// Helper function to check if directory exists
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return info.IsDir()
 }
