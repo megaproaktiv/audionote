@@ -1,127 +1,132 @@
-## Features implemented:
+# Audio Note LLM
 
-1. Action Type Select: A dropdown with 3 options - "summary", "call to action", "criticize"
-2. Language Select: A dropdown with 2 options - "en-US", "de-DE"
-3. Start Button: A button with a play icon that triggers the process
-4. Progress Bar: Shows progress when the start button is clicked
+A desktop application for configuring and processing audio notes using Large Language Models. The application provides a user-friendly interface for selecting audio files, choosing processing actions, and editing prompt templates.
 
-## New Features:
+## Overview
 
-1. Audio File Selector: A button labeled "Select Audio File" that opens a file dialog
-2. File Filtering: The dialog filters for common audio file formats (.mp3, .wav, .m4a, .aac, .ogg, .flac)
-3. Visual Feedback: Once a file is selected, the button text changes to show the selected filename
-4. Validation: The start button now checks if a file is selected before proceeding
-5. Enhanced Layout: Added the file selector to the configuration card with proper labeling and separators
+Audio Note LLM is a Go-based desktop application built with Fyne that allows users to:
+- Select audio files for processing
+- Choose from various AI processing actions (blog, paper, requirements, call-to-action)
+- Edit and customize prompt templates
+- Configure language settings
+- Maintain persistent user preferences
+- Process audio files with customizable AI prompts
 
+The application features a split-panel interface with configuration controls on the left and a maximized prompt editor on the right, providing an efficient workflow for audio note processing.
 
-## Pleasant Layout Features:
+# Functions
 
-• **Card Layout**: The selects are organized in a card with a title and description
-• **Bold Labels**: Clear labels for each component
-• **Separators**: Visual separation between sections
-• **Padding**: Proper spacing around all elements
-• **Centered Button**: The start button is centered at the bottom
-• **Default Selections**: Both selects have sensible defaults pre-selected
-• **Window Sizing**: Set to a comfortable 400x300 pixels
+## Configuration Management
 
-## Functionality:
+### Dynamic Action Type Loading
+- Automatically scans the `config` directory for `prompt-*.txt` files
+- Extracts action types from filenames (e.g., `prompt-paper.txt` → `paper`)
+- Populates the action type dropdown with discovered options
+- Supports extensible prompt templates by simply adding new files
 
-• When you select different options, they're printed to the console
-• Clicking "Start" will:
-  • Print the selected action and language
-  • Disable the button during processing
-  • Animate the progress bar from 0 to 100%
-  • Re-enable the button when complete
-  • Print "Process completed!" when done
+### Persistent Settings
+- **Last Action Type**: Remembers and restores the previously selected action
+- **Last Language**: Maintains language preference across sessions
+- **Last Directory**: Stores the last used directory for file selection
+- **Auto-save**: Configuration automatically saves on changes and application exit
+- Uses YAML format for human-readable configuration storage
 
+### Smart Defaults
+- Defaults to user's Documents directory on first run
+- Falls back gracefully when stored directories don't exist
+- Automatically selects the last used action type and language
+- Provides sensible fallbacks when configuration is missing
 
+## Audio File Management
 
-## New Features Implemented:
+### File Selection
+- File dialog with audio format filtering (MP3 and M4A only)
+- Visual feedback showing selected filename
+- Directory persistence - dialog opens in last used location
+- Hybrid directory location approach for maximum compatibility
 
-### 1. Dynamic Prompt File Loading
-• Reads all prompt-*.txt files from the config directory at startup
-• Extracts action types from filenames (e.g., prompt-paper.txt → paper)
-• Populates the action type select with these dynamic options
-• Found action types: blog, call-to-action, paper, requirements
+### Directory Navigation
+- **Smart Starting Location**: File dialog starts in the last used directory
+- **Directory Persistence**: Remembers and displays current directory
+- **Automatic Updates**: Directory is saved when new files are selected
+- **Visual Feedback**: Shows current directory path in the interface
 
-### 2. Viper Configuration Management
-• Added Viper dependency for YAML configuration management
-• Creates config.yaml file in the config directory
-• Stores user preferences persistently
+### File Validation
+- Validates file selection before processing
+- Provides clear error messages for missing files
+- Supports common audio formats with focused filtering
 
-### 3. Persistent Settings
-• **Last Action Type**: Remembers and restores the last selected action type
-• **Last Language**: Remembers and restores the last selected language
-• **Auto-save**: Configuration is saved when:
-  • User makes selections
-  • Start button is clicked
-  • Application window is closed
+## Prompt Editor
 
-### 4. Enhanced User Experience
-• **Smart Defaults**: Uses saved preferences or falls back to first available option
-• **Error Handling**: Graceful fallback if prompt files can't be read
-• **Console Feedback**: Shows loaded action types and current selections
+### Content Management
+- **Dynamic Loading**: Automatically loads prompt content when action type changes
+- **Real-time Editing**: Large, maximized text editor for prompt customization
+- **Word Wrapping**: Enabled for better readability of long prompts
+- **Scrollable Interface**: Handles prompts of any length
 
-## Configuration File Structure:
-yaml
-last_action_type: paper
-last_language: de-DE
+### Save Functionality
+- **Direct File Writing**: Saves changes directly to prompt files
+- **Success Feedback**: Confirmation dialogs for successful saves
+- **Error Handling**: Clear error messages for save failures
+- **File Preservation**: Maintains file permissions and structure
 
+### Template System
+- **Extensible Templates**: Add new action types by creating prompt files
+- **Structured Formats**: Each template defines specific output formats
+- **Customizable Content**: Full editing capability for all prompt templates
 
-## How It Works:
+## User Interface
 
-1. Startup: Application scans config directory for prompt-*.txt files
-2. Population: Action type dropdown is populated with extracted names
-3. Loading: Previous selections are loaded from config.yaml
-4. Default Selection: Last used action type is automatically selected
-5. Saving: Preferences are saved automatically when changed or on exit
+### Split Panel Layout
+- **Left Panel**: Configuration controls and file selection
+- **Right Panel**: Maximized prompt editor
+- **Equal Split**: 50/50 layout for balanced workspace
+- **Responsive Design**: Adapts to window resizing
 
-## Test Results:
-• ✅ Successfully loads action types: [blog call-to-action paper requirements]
-• ✅ Creates and reads config.yaml file
-• ✅ Remembers last selections (tested with paper and de-DE)
-• ✅ Graceful fallback when no config exists
-• ✅ Application builds and runs successfully
+### Visual Design
+- **Card Layout**: Organized sections with clear titles and descriptions
+- **Bold Labels**: Clear identification of each component
+- **Visual Separators**: Clean separation between functional areas
+- **Professional Styling**: Consistent theme and spacing
 
-The application now dynamically adapts to your prompt files and maintains user preferences across sessions, providing
-a much more personalized and flexible experience!
+### Progress Tracking
+- **Visual Progress Bar**: Shows processing status
+- **Button State Management**: Disables controls during processing
+- **Status Feedback**: Console output for debugging and monitoring
 
-### 1. Directory Persistence
-• Added LastDirectory field to the configuration structure
-• Stores and retrieves the last directory used for file selection
-• Configuration is saved to config.yaml and persists across app restarts
+## Language Support
 
-### 2. Smart Directory Starting Location
-• File dialog now starts in the last used directory
-• Uses os.Chdir() approach to change to the stored directory before opening the dialog
-• Restores the original working directory after file selection
+### Multi-language Configuration
+- Support for English (en-US) and German (de-DE)
+- Language preference persistence
+- Easy extension for additional languages
 
-### 3. Default to Documents Directory
-• On first run, defaults to the user's Documents directory (~/Documents)
-• Falls back gracefully if Documents directory doesn't exist
+## Processing Workflow
 
-### 4. File Filter Restriction
-• File dialog now only shows .mp3 and .m4a files
-• Removed other audio formats as requested
-• Provides cleaner, more focused file selection
+### Start Process
+- **Validation**: Ensures all required selections are made
+- **Configuration Save**: Automatically saves current settings
+- **Progress Simulation**: Visual feedback during processing
+- **Status Updates**: Console logging for process monitoring
 
-### 5. Visual Directory Display
-• Shows current directory in an italic label below the file selector
-• Updates in real-time when a new directory is selected
-• Provides clear feedback about where files will be opened from
+### Error Handling
+- **Graceful Fallbacks**: Handles missing files and directories
+- **User Feedback**: Clear error messages and success confirmations
+- **Recovery Options**: Automatic restoration of working directories
 
-## Updated Configuration Structure:
-yaml
-last_action_type: paper
-last_directory: /tmp/test_audio
-last_language: de-DE
+## Technical Architecture
 
+### Package Structure
+- **Main Application**: GUI logic and user interface
+- **Configuration Package**: All config-related functionality separated
+- **Clean Architecture**: Separation of concerns for maintainability
 
-## How Directory Navigation Works:
+### File System Integration
+- **Cross-platform Compatibility**: Works on macOS, Windows, and Linux
+- **Path Handling**: Proper absolute path resolution
+- **Directory Management**: Safe directory changes with restoration
 
-1. Startup: Application loads the last used directory from config
-2. Display: Shows current directory in the UI
-3. File Dialog: When opened, temporarily changes to the stored directory
-4. File Selection: User sees files from the last used location first
-5. Directory Update: When a file is selected, the new directory is automatically saved
-6. Restoration: Original working directory is restored after dialog closes
+### Data Persistence
+- **YAML Configuration**: Human-readable settings storage
+- **File-based Templates**: Easy template management and backup
+- **Atomic Operations**: Safe file writing with error recovery

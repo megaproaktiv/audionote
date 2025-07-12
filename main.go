@@ -20,8 +20,8 @@ import (
 
 func main() {
 	a := app.New()
-	w := a.NewWindow("Audio Note Configuration")
-	w.Resize(fyne.NewSize(500, 400))
+	w := a.NewWindow("Audio Note LLM")
+	w.Resize(fyne.NewSize(1000, 600)) // Increased width for editor
 
 	// Initialize configuration
 	config := configuration.InitConfig()
@@ -39,12 +39,31 @@ func main() {
 	
 	fmt.Printf("Loaded action types: %v\n", actionTypes)
 
+	// Create editor field for prompt content
+	promptEditor := widget.NewMultiLineEntry()
+	promptEditor.Wrapping = fyne.TextWrapWord
+	promptEditor.SetPlaceHolder("Select an action type to load its prompt content...")
+
+	// Function to load prompt content
+	loadPromptContent := func(actionType string) {
+		content, err := configuration.LoadPromptContent(actionType)
+		if err != nil {
+			promptEditor.SetText(fmt.Sprintf("Error loading prompt for '%s': %v", actionType, err))
+			fmt.Printf("Error loading prompt content for %s: %v\n", actionType, err)
+		} else {
+			promptEditor.SetText(content)
+			fmt.Printf("Loaded prompt content for action type: %s\n", actionType)
+		}
+	}
+
 	// Create the select widgets
 	actionSelect := widget.NewSelect(
 		actionTypes,
 		func(value string) {
 			fmt.Printf("Action selected: %s\n", value)
 			config.LastActionType = value
+			// Load the corresponding prompt content
+			loadPromptContent(value)
 		},
 	)
 	
@@ -55,6 +74,9 @@ func main() {
 	}
 	actionSelect.SetSelected(defaultAction)
 	config.LastActionType = defaultAction
+	
+	// Load initial prompt content
+	loadPromptContent(defaultAction)
 
 	languageSelect := widget.NewSelect(
 		[]string{"en-US", "de-DE"},
@@ -132,6 +154,25 @@ func main() {
 	progressBar := widget.NewProgressBar()
 	progressBar.SetValue(0.0)
 
+	// Create save button for prompt editor
+	savePromptButton := widget.NewButtonWithIcon("Save Prompt", theme.DocumentSaveIcon(), func() {
+		currentAction := actionSelect.Selected
+		if currentAction == "" {
+			dialog.ShowError(fmt.Errorf("no action type selected"), w)
+			return
+		}
+		
+		content := promptEditor.Text
+		err := configuration.SavePromptContent(currentAction, content)
+		if err != nil {
+			dialog.ShowError(fmt.Errorf("failed to save prompt: %v", err), w)
+			fmt.Printf("Error saving prompt for %s: %v\n", currentAction, err)
+		} else {
+			dialog.ShowInformation("Success", fmt.Sprintf("Prompt for '%s' saved successfully!", currentAction), w)
+			fmt.Printf("Successfully saved prompt for action type: %s\n", currentAction)
+		}
+	})
+
 	// Create the start button
 	var startButton *widget.Button
 	startButton = widget.NewButtonWithIcon("Start", theme.MediaPlayIcon(), func() {
@@ -178,8 +219,12 @@ func main() {
 	progressLabel := widget.NewLabel("Progress:")
 	progressLabel.TextStyle.Bold = true
 
-	// Create the main content with a nice layout
-	content := container.NewVBox(
+	// Prompt editor label
+	promptLabel := widget.NewLabel("Prompt Editor:")
+	promptLabel.TextStyle.Bold = true
+
+	// Create the left side configuration panel
+	leftPanel := container.NewVBox(
 		widget.NewCard("Configuration", "Select your audio note processing options", 
 			container.NewVBox(
 				actionLabel,
@@ -205,6 +250,28 @@ func main() {
 			layout.NewSpacer(),
 		),
 	)
+
+	// Create the right side editor panel - fully maximized editor
+	rightPanel := container.NewBorder(
+		// Top: Just the label
+		container.NewPadded(promptLabel),
+		// Bottom: Centered save button
+		container.NewPadded(
+			container.NewHBox(
+				layout.NewSpacer(),
+				savePromptButton,
+				layout.NewSpacer(),
+			),
+		),
+		// Left, Right: nil
+		nil, nil,
+		// Center: Maximized scrollable editor
+		container.NewScroll(promptEditor),
+	)
+
+	// Create horizontal split with left and right panels
+	content := container.NewHSplit(leftPanel, rightPanel)
+	content.SetOffset(0.5) // Equal split
 
 	// Add some padding around the content
 	paddedContent := container.NewPadded(content)

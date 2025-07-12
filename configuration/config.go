@@ -186,6 +186,37 @@ func (c *Config) TestDirectoryAccess() bool {
 	return true
 }
 
+// LoadPromptContent reads the content of a prompt file for the given action type
+func LoadPromptContent(actionType string) (string, error) {
+	filename := fmt.Sprintf("prompt-%s.txt", actionType)
+	filepath := filepath.Join("./config", filename)
+	
+	content, err := os.ReadFile(filepath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read prompt file %s: %v", filename, err)
+	}
+	
+	return string(content), nil
+}
+
+// SavePromptContent saves the content to a prompt file for the given action type
+func SavePromptContent(actionType, content string) error {
+	filename := fmt.Sprintf("prompt-%s.txt", actionType)
+	filepath := filepath.Join("./config", filename)
+	
+	// Ensure config directory exists
+	if err := os.MkdirAll("./config", 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %v", err)
+	}
+	
+	err := os.WriteFile(filepath, []byte(content), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write prompt file %s: %v", filename, err)
+	}
+	
+	return nil
+}
+
 // Contains checks if a slice contains a string
 func Contains(slice []string, item string) bool {
 	for _, s := range slice {
