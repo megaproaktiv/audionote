@@ -2,8 +2,11 @@ package translate
 
 import "log"
 
-// Convert file and call transcribe
-func Translate(inputFile string, bucket string) string {
+// Translate converts an audio file and transcribes it using AWS Transcribe
+// inputFile: path to the input audio file (M4A or MP3)
+// bucket: S3 bucket name for storing temporary files
+// languageCode: language code for transcription (e.g., "en-US", "de-DE")
+func Translate(inputFile string, bucket string, languageCode string) string {
 
 	mp3File, err := ConvertM4AToMP3(inputFile)
 	if err != nil {
@@ -15,7 +18,7 @@ func Translate(inputFile string, bucket string) string {
 		log.Fatalf("Error copying file to S3: %v", err)
 	}
 
-	jobName, err := StartTranscribeJob(bucket, mp3Key)
+	jobName, err := StartTranscribeJob(bucket, mp3Key, languageCode)
 	if err != nil {
 		log.Fatalf("Error starting transcription job: %v", err)
 	}

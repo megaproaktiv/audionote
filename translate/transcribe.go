@@ -18,14 +18,17 @@ type TranscriptResponse struct {
 	} `json:"results"`
 }
 
-func StartTranscribeJob(bucket, mp3Key string) (string, error) {
+// StartTranscribeJob starts an AWS Transcribe job with the specified language code
+// Supported language codes include: en-US, de-DE, fr-FR, es-ES, etc.
+// See AWS Transcribe documentation for full list of supported languages
+func StartTranscribeJob(bucket, mp3Key, languageCode string) (string, error) {
 	jobName := strings.TrimSuffix(filepath.Base(mp3Key), ".mp3") + "-DMIN-" + fmt.Sprintf("%d", time.Now().Unix())
 	mediaURI := fmt.Sprintf("s3://%s/%s", bucket, mp3Key)
-	fmt.Printf("Starting transcription job '%s' for %s...\n", jobName, mediaURI)
+	fmt.Printf("Starting transcription job '%s' for %s with language %s...\n", jobName, mediaURI, languageCode)
 	outputKey := fmt.Sprintf("summary/output/%s.json", jobName)
 	cmd := exec.Command("aws", "transcribe", "start-transcription-job",
 		"--transcription-job-name", jobName,
-		"--language-code", "de-DE",
+		"--language-code", languageCode,
 		"--media-sample-rate-hertz", "48000",
 		"--media-format", "mp3",
 		"--media", fmt.Sprintf("MediaFileUri=%s", mediaURI),

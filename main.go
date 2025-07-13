@@ -535,9 +535,10 @@ func main() {
 		),
 	)
 
-	// Create the start button
+	// Create the start button with Material Design microphone icon
+	// Using emoji + built-in icon for better compatibility
 	var startButton *widget.Button
-	startButton = widget.NewButtonWithIcon("Start", theme.MediaPlayIcon(), func() {
+	startButton = widget.NewButtonWithIcon("🎤 Start", theme.VolumeUpIcon(), func() {
 		action := actionSelect.Selected
 		language := languageSelect.Selected
 
@@ -555,7 +556,8 @@ func main() {
 		go func() {
 			startButton.Disable()
 			progressBar.SetValue(float64(30) / 100.0)
-			transcript := translate.Translate(selectedFilePath, config.S3Bucket)
+			fmt.Printf("Starting transcription with language: %s\n", language)
+			transcript := translate.Translate(selectedFilePath, config.S3Bucket, language)
 			progressBar.SetValue(float64(60) / 100.0)
 			promptData, err := configuration.LoadPromptContent("blog")
 			if err != nil {
