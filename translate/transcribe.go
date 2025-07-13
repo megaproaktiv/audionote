@@ -1,6 +1,7 @@
 package translate
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,6 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/transcribe"
+	"github.com/aws/aws-sdk-go-v2/service/transcribe/types"
 )
 
 type TranscriptResponse struct {
@@ -21,27 +26,30 @@ type TranscriptResponse struct {
 // StartTranscribeJob starts an AWS Transcribe job with the specified language code
 // Supported language codes include: en-US, de-DE, fr-FR, es-ES, etc.
 // See AWS Transcribe documentation for full list of supported languages
-func StartTranscribeJob(bucket, mp3Key, languageCode string) (string, error) {
+func StartTranscribeJob(ctx context.Context, client *transcribe.Client, bucket, mp3Key, languageCode string) (string, error) {
 	jobName := strings.TrimSuffix(filepath.Base(mp3Key), ".mp3") + "-DMIN-" + fmt.Sprintf("%d", time.Now().Unix())
 	mediaURI := fmt.Sprintf("s3://%s/%s", bucket, mp3Key)
 	fmt.Printf("Starting transcription job '%s' for %s with language %s...\n", jobName, mediaURI, languageCode)
 	outputKey := fmt.Sprintf("summary/output/%s.json", jobName)
-	cmd := exec.Command("aws", "transcribe", "start-transcription-job",
-		"--transcription-job-name", jobName,
-		"--language-code", languageCode,
-		"--media-sample-rate-hertz", "48000",
-		"--media-format", "mp3",
-		"--media", fmt.Sprintf("MediaFileUri=%s", mediaURI),
-		"--output-bucket-name", bucket,
-		"--output-key", outputKey,
-	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	err := cmd.Run()
+	media := fmt.Sprintf("MediaFileUri=%s", mediaURI)
+	mediaFormat := types.MediaFormatM4a
+	params := transcribe.StartTranscriptionJobInput{
+		Media:                &types.Media{MediaFileUri: &media},
+		TranscriptionJobName: &jobName,
+		IdentifyLanguage:     aws.Bool(true),
+		LanguageCode:         "",
+		LanguageIdSettings:   map[string]types.LanguageIdSettings{},
+		LanguageOptions:      []types.LanguageCode{},
+		MediaFormat:          mediaFormat,
+		MediaSampleRateHertz: aws.Int32(48000),
+		OutputBucketName:     &bucket,
+		OutputKey:            &outputKey,
+	}
+	resp, err := client.StartTranscriptionJob(ctx, &params)
 	if err != nil {
 		return "", err
 	}
-	return jobName, nil
+	return *resp.TranscriptionJob.TranscriptionJobName, nil
 }
 
 func WaitForTranscribeJob(jobName string) error {

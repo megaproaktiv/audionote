@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="#2196F3" stroke="#1976D2" stroke-width="8"/>
+  
+  <!-- Microphone body (capsule) -->
+  <rect x="216" y="120" width="80" height="160" rx="40" ry="40" fill="white"/>
+  
+  <!-- Microphone grille lines -->
+  <line x1="230" y1="140" x2="282" y2="140" stroke="#2196F3" stroke-width="3" stroke-linecap="round"/>
+  <line x1="230" y1="160" x2="282" y2="160" stroke="#2196F3" stroke-width="3" stroke-linecap="round"/>
+  <line x1="230" y1="180" x2="282" y2="180" stroke="#2196F3" stroke-width="3" stroke-linecap="round"/>
+  <line x1="230" y1="200" x2="282" y2="200" stroke="#2196F3" stroke-width="3" stroke-linecap="round"/>
+  <line x1="230" y1="220" x2="282" y2="220" stroke="#2196F3" stroke-width="3" stroke-linecap="round"/>
+  <line x1="230" y1="240" x2="282" y2="240" stroke="#2196F3" stroke-width="3" stroke-linecap="round"/>
+  <line x1="230" y1="260" x2="282" y2="260" stroke="#2196F3" stroke-width="3" stroke-linecap="round"/>
+  
+  <!-- Microphone stand/base -->
+  <path d="M 180 300 Q 180 320 200 320 L 312 320 Q 332 320 332 300" 
+        fill="none" stroke="white" stroke-width="12" stroke-linecap="round"/>
+  
+  <!-- Microphone stand vertical -->
+  <line x1="256" y1="320" x2="256" y2="380" stroke="white" stroke-width="12" stroke-linecap="round"/>
+  
+  <!-- Microphone base -->
+  <line x1="200" y1="380" x2="312" y2="380" stroke="white" stroke-width="16" stroke-linecap="round"/>
+  
+  <!-- Sound waves -->
+  <path d="M 350 200 Q 380 200 380 256 Q 380 312 350 312" 
+        fill="none" stroke="white" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 162 200 Q 132 200 132 256 Q 132 312 162 312" 
+        fill="none" stroke="white" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
+  
+  <!-- Additional sound waves -->
+  <path d="M 370 180 Q 410 180 410 256 Q 410 332 370 332" 
+        fill="none" stroke="white" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
+  <path d="M 142 180 Q 102 180 102 256 Q 102 332 142 332" 
+        fill="none" stroke="white" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
+</svg>

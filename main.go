@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -290,6 +291,7 @@ func main() {
 
 	// Initialize configuration
 	config := configuration.InitConfig()
+	ctx := context.Background()
 
 	// Create output text field for stdout capture (needed for menu configuration)
 	outputField := widget.NewMultiLineEntry()
@@ -552,12 +554,22 @@ func main() {
 
 		fmt.Printf("Starting process with Action: %s, Language: %s, File: %s\n", action, language, selectedFilePath)
 
-		// Simulate progress
+		// *********************************************************
+		// * Start processing                                      *
+		// *********************************************************
 		go func() {
 			startButton.Disable()
 			progressBar.SetValue(float64(30) / 100.0)
 			fmt.Printf("Starting transcription with language: %s\n", language)
-			transcript := translate.Translate(selectedFilePath, config.S3Bucket, language)
+			awsProfile := config.AWSProfile
+			err = translate.InitClient(awsProfile)
+			if err != nil {
+				progressBar.SetValue(float64(0.0))
+				fmt.Println("Could not load AWS profile: ", awsProfile)
+				startButton.Enable()
+				return
+			}
+			transcript := translate.Translate(ctx, translate.Client, selectedFilePath, config.S3Bucket, language)
 			progressBar.SetValue(float64(60) / 100.0)
 			promptData, err := configuration.LoadPromptContent("blog")
 			if err != nil {

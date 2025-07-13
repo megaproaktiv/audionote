@@ -3,11 +3,150 @@
 version: "3"
 
 vars:
-  GREETING: Hello, World!
+  APP_NAME: "Audio Note LLM"
+  APP_ID: "com.megaproaktiv.audionote-llm"
+  VERSION: "1.0.0"
+  DIST_DIR: "dist"
 
 tasks:
-  build:
-    desc: Build app
+  clean:
+    desc: Clean build artifacts
     cmds:
-      - go build -o dist/anl main.go
+      - rm -rf {{.DIST_DIR}}
+      - mkdir -p {{.DIST_DIR}}
     silent: true
+
+  build:
+    desc: Build app binary
+    deps: [clean]
+    cmds:
+      - go build -o {{.DIST_DIR}}/audionote-llm main.go
+    silent: true
+
+  package:
+    desc: Package app for distribution (all platforms)
+    deps: [clean]
+    cmds:
+      - task: package-darwin
+      - task: package-windows
+      - task: package-linux
+    silent: true
+
+  package-darwin:
+    desc: Package macOS app bundle
+    cmds:
+      - echo "Packaging macOS app bundle..."
+      - fyne package --target darwin --name "{{.APP_NAME}}" --id {{.APP_ID}} --icon icon.png
+      - mkdir -p {{.DIST_DIR}}
+      - mv "{{.APP_NAME}}.app" {{.DIST_DIR}}/
+      - echo "macOS app bundle created in {{.DIST_DIR}}/"
+    silent: false
+
+  package-windows:
+    desc: Package Windows executable
+    cmds:
+      - echo "Packaging Windows executable..."
+      - fyne package --target windows --name "{{.APP_NAME}}" --id {{.APP_ID}} --icon icon.png
+      - mkdir -p {{.DIST_DIR}}
+      - mv "{{.APP_NAME}}.exe" {{.DIST_DIR}}/
+      - echo "Windows executable created in {{.DIST_DIR}}/"
+    silent: false
+
+  package-linux:
+    desc: Package Linux executable
+    cmds:
+      - echo "Packaging Linux executable..."
+      - fyne package --target linux --name "{{.APP_NAME}}" --id {{.APP_ID}} --icon icon.png
+      - mkdir -p {{.DIST_DIR}}
+      - mv "{{.APP_NAME}}" {{.DIST_DIR}}/
+      - echo "Linux executable created in {{.DIST_DIR}}/"
+    silent: false
+
+  package-current:
+    desc: Package app for current platform only
+    deps: [clean]
+    cmds:
+      - echo "Packaging for current platform..."
+      - fyne package --name "{{.APP_NAME}}" --id {{.APP_ID}} --icon icon.png
+      - mkdir -p {{.DIST_DIR}}
+      - mv "{{.APP_NAME}}.app" {{.DIST_DIR}}/ 2>/dev/null || mv "{{.APP_NAME}}.exe" {{.DIST_DIR}}/ 2>/dev/null || mv "{{.APP_NAME}}" {{.DIST_DIR}}/ 2>/dev/null || true
+      - echo "Package created in {{.DIST_DIR}}/"
+    silent: false
+
+  install:
+    desc: Install the app (macOS only)
+    deps: [package-darwin]
+    cmds:
+      - echo "Installing Audio Note LLM to Applications folder..."
+      - cp -r "{{.DIST_DIR}}/{{.APP_NAME}}.app" "/Applications/"
+      - echo "Audio Note LLM installed successfully!"
+    silent: false
+
+  run:
+    desc: Run the app directly
+    cmds:
+      - go run .
+    silent: true
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test ./...
+    silent: true
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+    silent: true
+
+  fmt:
+    desc: Format Go code
+    cmds:
+      - go fmt ./...
+    silent: true
+
+  deps:
+    desc: Download dependencies
+    cmds:
+      - go mod download
+      - go mod tidy
+    silent: true
+
+  dev:
+    desc: Development workflow (format, vet, test, run)
+    cmds:
+      - task: fmt
+      - task: vet
+      - task: test
+      - task: run
+    silent: true
+
+  release:
+    desc: Full release workflow (format, vet, test, package)
+    cmds:
+      - echo "Starting release workflow..."
+      - task: fmt
+      - task: vet
+      - task: test
+      - task: package
+      - echo "Release packages created in {{.DIST_DIR}}/"
+    silent: false
+
+  list-packages:
+    desc: List created packages in dist directory
+    cmds:
+      - echo "📦 Packages in {{.DIST_DIR}}:"
+      - ls -la {{.DIST_DIR}}/ 2>/dev/null || echo "No packages found. Run 'task package-current' to create one."
+    silent: false
+
+  info:
+    desc: Show build information
+    cmds:
+      - echo "App Name{{":"}} {{.APP_NAME}}"
+      - echo "App ID{{":"}} {{.APP_ID}}"
+      - echo "Version{{":"}} {{.VERSION}}"
+      - echo "Dist Dir{{":"}} {{.DIST_DIR}}"
+      - echo "Go Version{{":"}} $(go version)"
+      - echo "Fyne Version{{":"}} $(fyne version 2>/dev/null || echo 'Not installed')"
+    silent: false
