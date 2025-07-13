@@ -1,3 +1,5 @@
-last_action_type: paper
+aws_profile: letstrain
+last_action_type: call-to-action
 last_directory: /Users/megaproaktiv/Documents/letsbuild/audionote-llm
-last_language: de-DE
+last_language: en-US
+s3_bucket: dateneimer

@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -16,7 +16,105 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/megaproaktiv/audionote-config/configuration"
+	"github.com/megaproaktiv/audionote-config/llm"
+	"github.com/megaproaktiv/audionote-config/translate"
 )
+
+// showAboutDialog displays the About dialog
+func showAboutDialog(w fyne.Window) {
+	aboutContent := widget.NewRichTextFromMarkdown(`# Audio Note LLM
+
+A desktop application for configuring and processing audio notes using Large Language Models.
+
+## Features
+• **Audio File Support**: Process MP3 and M4A files
+• **AI Processing Actions**: Choose from various processing templates
+• **Prompt Editor**: Edit and customize AI prompt templates
+• **Language Support**: Multiple language configurations
+• **AWS Integration**: S3 bucket and profile configuration
+• **Persistent Settings**: Automatic saving of user preferences
+
+## Technical Details
+• Built with **Go** programming language
+• UI framework: **Fyne v2**
+• Configuration: **Viper** with YAML storage
+• Cross-platform compatibility
+
+## Version
+**1.0.0** - Initial Release
+
+---
+*Built with ❤️ for efficient audio note processing*`)
+
+	aboutDialog := dialog.NewCustom("About Audio Note LLM", "Close", aboutContent, w)
+	aboutDialog.Resize(fyne.NewSize(500, 400))
+	aboutDialog.Show()
+}
+
+// showConfigDialog displays the configuration dialog
+func showConfigDialog(w fyne.Window, config *configuration.Config) {
+	// Create entry widgets for configuration
+	s3BucketEntry := widget.NewEntry()
+	s3BucketEntry.SetText(config.S3Bucket)
+	s3BucketEntry.SetPlaceHolder("Enter S3 bucket name (e.g., my-audio-bucket)")
+
+	awsProfileEntry := widget.NewEntry()
+	awsProfileEntry.SetText(config.AWSProfile)
+	awsProfileEntry.SetPlaceHolder("Enter AWS profile name (e.g., default)")
+
+	// Create labels with descriptions
+	s3Label := widget.NewRichTextFromMarkdown("**S3 Bucket:**\nThe AWS S3 bucket where audio files will be stored or retrieved.")
+	awsLabel := widget.NewRichTextFromMarkdown("**AWS Profile:**\nThe AWS CLI profile to use for authentication.")
+
+	// Create form content
+	formContent := container.NewVBox(
+		s3Label,
+		s3BucketEntry,
+		widget.NewSeparator(),
+		awsLabel,
+		awsProfileEntry,
+		widget.NewSeparator(),
+		widget.NewLabel("Note: Make sure your AWS credentials are properly configured."),
+	)
+
+	// Create dialog
+	configDialog := dialog.NewCustomConfirm(
+		"AWS Configuration Settings",
+		"Save",
+		"Cancel",
+		formContent,
+		func(confirmed bool) {
+			if confirmed {
+				// Basic validation
+				s3Bucket := s3BucketEntry.Text
+				awsProfile := awsProfileEntry.Text
+
+				if awsProfile == "" {
+					awsProfile = "default"
+				}
+
+				// Update configuration
+				config.S3Bucket = s3Bucket
+				config.AWSProfile = awsProfile
+
+				// Save configuration
+				config.Save()
+
+				// Show success message
+				successMsg := fmt.Sprintf("AWS configuration saved successfully!\n\nS3 Bucket: %s\nAWS Profile: %s",
+					s3Bucket, awsProfile)
+				dialog.ShowInformation("Configuration Saved", successMsg, w)
+
+				fmt.Printf("Configuration updated - S3 Bucket: %s, AWS Profile: %s\n",
+					config.S3Bucket, config.AWSProfile)
+			}
+		},
+		w,
+	)
+
+	configDialog.Resize(fyne.NewSize(500, 350))
+	configDialog.Show()
+}
 
 func main() {
 	a := app.New()
@@ -25,18 +123,34 @@ func main() {
 
 	// Initialize configuration
 	config := configuration.InitConfig()
-	
+
+	// Create menu
+	aboutMenu := fyne.NewMenu("Help",
+		fyne.NewMenuItem("About Audio Note LLM", func() {
+			showAboutDialog(w)
+		}),
+	)
+
+	configMenu := fyne.NewMenu("Settings",
+		fyne.NewMenuItem("Configuration...", func() {
+			showConfigDialog(w, config)
+		}),
+	)
+
+	mainMenu := fyne.NewMainMenu(configMenu, aboutMenu)
+	w.SetMainMenu(mainMenu)
+
 	// Load prompt files to populate action types
 	actionTypes, err := configuration.LoadPromptFiles()
 	if err != nil {
 		fmt.Printf("Error loading prompt files: %v\n", err)
 		actionTypes = []string{"summary", "call to action", "criticize"} // fallback
 	}
-	
+
 	if len(actionTypes) == 0 {
 		actionTypes = []string{"summary", "call to action", "criticize"} // fallback
 	}
-	
+
 	fmt.Printf("Loaded action types: %v\n", actionTypes)
 
 	// Create editor field for prompt content
@@ -66,7 +180,7 @@ func main() {
 			loadPromptContent(value)
 		},
 	)
-	
+
 	// Set default selection from config or first available option
 	defaultAction := config.LastActionType
 	if defaultAction == "" || !configuration.Contains(actionTypes, defaultAction) {
@@ -74,7 +188,7 @@ func main() {
 	}
 	actionSelect.SetSelected(defaultAction)
 	config.LastActionType = defaultAction
-	
+
 	// Load initial prompt content
 	loadPromptContent(defaultAction)
 
@@ -85,7 +199,7 @@ func main() {
 			config.LastLanguage = value
 		},
 	)
-	
+
 	// Set default language from config
 	if config.LastLanguage != "" {
 		languageSelect.SetSelected(config.LastLanguage)
@@ -98,21 +212,21 @@ func main() {
 	var selectedFilePath string
 	var fileSelector *widget.Button
 	var directoryLabel *widget.Label
-	
+
 	fileSelector = widget.NewButton("Select Audio File", func() {
 		// Store current directory to restore later
 		currentDir, _ := os.Getwd()
 		fmt.Printf("Current working directory: %s\n", currentDir)
-		
+
 		// Set the directory for the dialog
 		if err := config.SetDirectoryForDialog(); err != nil {
 			fmt.Printf("Could not set directory: %v\n", err)
 		}
-		
+
 		dialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			// Always restore original directory first
 			configuration.RestoreDirectory(currentDir)
-			
+
 			if err != nil {
 				fmt.Printf("Error selecting file: %v\n", err)
 				return
@@ -121,20 +235,20 @@ func main() {
 				return
 			}
 			defer reader.Close()
-			
+
 			selectedFilePath = reader.URI().Path()
 			fileSelector.SetText(fmt.Sprintf("Selected: %s", filepath.Base(selectedFilePath)))
 			fmt.Printf("Audio file selected: %s\n", selectedFilePath)
-			
+
 			// Update last used directory
 			config.LastDirectory = filepath.Dir(selectedFilePath)
 			directoryLabel.SetText(fmt.Sprintf("Directory: %s", config.LastDirectory))
 			fmt.Printf("Updated last directory to: %s\n", config.LastDirectory)
 		}, w)
-		
+
 		// Set file filter for only m4a and mp3 files
 		dialog.SetFilter(storage.NewExtensionFileFilter([]string{".mp3", ".m4a"}))
-		
+
 		// Also try to set location via URI (additional method)
 		if dirURI := config.GetDirectoryURI(); dirURI != nil {
 			// Try to cast to ListableURI for SetLocation
@@ -145,7 +259,7 @@ func main() {
 				fmt.Printf("URI is not listable, relying on directory change method\n")
 			}
 		}
-		
+
 		fmt.Printf("Opening file dialog (should start in: %s)\n", config.LastDirectory)
 		dialog.Show()
 	})
@@ -161,7 +275,7 @@ func main() {
 			dialog.ShowError(fmt.Errorf("no action type selected"), w)
 			return
 		}
-		
+
 		content := promptEditor.Text
 		err := configuration.SavePromptContent(currentAction, content)
 		if err != nil {
@@ -178,24 +292,38 @@ func main() {
 	startButton = widget.NewButtonWithIcon("Start", theme.MediaPlayIcon(), func() {
 		action := actionSelect.Selected
 		language := languageSelect.Selected
-		
+
 		if selectedFilePath == "" {
 			dialog.ShowInformation("No File Selected", "Please select an audio file first.", w)
 			return
 		}
-		
+
 		// Save current configuration
 		config.Save()
-		
+
 		fmt.Printf("Starting process with Action: %s, Language: %s, File: %s\n", action, language, selectedFilePath)
-		
+
 		// Simulate progress
 		go func() {
 			startButton.Disable()
-			for i := 0; i <= 100; i += 10 {
-				progressBar.SetValue(float64(i) / 100.0)
-				time.Sleep(200 * time.Millisecond)
+			transcript := translate.Translate(selectedFilePath, config.S3Bucket)
+			progressBar.SetValue(float64(50) / 100.0)
+			promptData, err := configuration.LoadPromptContent("blog")
+			if err != nil {
+				log.Fatalf("Error loading prompt: %v", err)
 			}
+			fullPrompt := string(promptData) + "\n" + transcript
+
+			bedrockResult, err := llm.CallBedrock(fullPrompt)
+			if err != nil {
+				log.Fatalf("Error calling Bedrock: %v", err)
+			}
+
+			err = os.WriteFile("result.txt", []byte(bedrockResult), 0644)
+			if err != nil {
+				log.Fatalf("Error writing result.txt: %v", err)
+			}
+			fmt.Println("Done. Result written to result.txt")
 			progressBar.SetValue(1.0)
 			fmt.Println("Process completed!")
 			startButton.Enable()
@@ -205,17 +333,17 @@ func main() {
 	// Create form layout with labels
 	actionLabel := widget.NewLabel("Action Type:")
 	actionLabel.TextStyle.Bold = true
-	
+
 	languageLabel := widget.NewLabel("Language:")
 	languageLabel.TextStyle.Bold = true
-	
+
 	fileLabel := widget.NewLabel("Audio File:")
 	fileLabel.TextStyle.Bold = true
-	
+
 	// Directory display label
 	directoryLabel = widget.NewLabel(fmt.Sprintf("Directory: %s", config.LastDirectory))
 	directoryLabel.TextStyle.Italic = true
-	
+
 	progressLabel := widget.NewLabel("Progress:")
 	progressLabel.TextStyle.Bold = true
 
@@ -225,7 +353,7 @@ func main() {
 
 	// Create the left side configuration panel
 	leftPanel := container.NewVBox(
-		widget.NewCard("Configuration", "Select your audio note processing options", 
+		widget.NewCard("Configuration", "Select your audio note processing options",
 			container.NewVBox(
 				actionLabel,
 				actionSelect,
@@ -277,12 +405,12 @@ func main() {
 	paddedContent := container.NewPadded(content)
 
 	w.SetContent(paddedContent)
-	
+
 	// Save config when window closes
 	w.SetCloseIntercept(func() {
 		config.Save()
 		w.Close()
 	})
-	
+
 	w.ShowAndRun()
 }

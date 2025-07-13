@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -17,27 +18,29 @@ type Config struct {
 	LastActionType string `mapstructure:"last_action_type"`
 	LastLanguage   string `mapstructure:"last_language"`
 	LastDirectory  string `mapstructure:"last_directory"`
+	S3Bucket       string `mapstructure:"s3_bucket"`
+	AWSProfile     string `mapstructure:"aws_profile"`
 }
 
 // LoadPromptFiles reads all prompt-*.txt files from the config directory
 func LoadPromptFiles() ([]string, error) {
 	var actionTypes []string
-	
+
 	err := filepath.WalkDir("./config", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		
+
 		if !d.IsDir() && strings.HasPrefix(d.Name(), "prompt-") && strings.HasSuffix(d.Name(), ".txt") {
 			// Extract action type from filename: prompt-ACTION.txt -> ACTION
 			actionType := strings.TrimPrefix(d.Name(), "prompt-")
 			actionType = strings.TrimSuffix(actionType, ".txt")
 			actionTypes = append(actionTypes, actionType)
 		}
-		
+
 		return nil
 	})
-	
+
 	return actionTypes, err
 }
 
@@ -46,19 +49,21 @@ func InitConfig() *Config {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath("./config")
-	
+
 	// Get user's Documents directory as default
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		homeDir = "."
 	}
 	documentsDir := filepath.Join(homeDir, "Documents")
-	
+
 	// Set defaults
 	viper.SetDefault("last_action_type", "")
 	viper.SetDefault("last_language", "en-US")
 	viper.SetDefault("last_directory", documentsDir)
-	
+	viper.SetDefault("s3_bucket", "")
+	viper.SetDefault("aws_profile", "default")
+
 	// Try to read existing config
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
@@ -68,17 +73,17 @@ func InitConfig() *Config {
 			fmt.Printf("Error reading config file: %v\n", err)
 		}
 	}
-	
+
 	var config Config
 	if err := viper.Unmarshal(&config); err != nil {
 		fmt.Printf("Error unmarshaling config: %v\n", err)
 	}
-	
+
 	// Ensure last directory exists, fallback to Documents if not
 	if config.LastDirectory == "" || !DirExists(config.LastDirectory) {
 		config.LastDirectory = documentsDir
 	}
-	
+
 	return &config
 }
 
@@ -87,13 +92,15 @@ func (c *Config) Save() {
 	viper.Set("last_action_type", c.LastActionType)
 	viper.Set("last_language", c.LastLanguage)
 	viper.Set("last_directory", c.LastDirectory)
-	
+	viper.Set("s3_bucket", c.S3Bucket)
+	viper.Set("aws_profile", c.AWSProfile)
+
 	// Ensure config directory exists
 	if err := os.MkdirAll("./config", 0755); err != nil {
 		fmt.Printf("Error creating config directory: %v\n", err)
 		return
 	}
-	
+
 	if err := viper.WriteConfigAs("./config/config.yaml"); err != nil {
 		fmt.Printf("Error writing config file: %v\n", err)
 	} else {
@@ -157,21 +164,21 @@ func (c *Config) TestDirectoryAccess() bool {
 		fmt.Println("No directory stored in config")
 		return false
 	}
-	
+
 	if !DirExists(c.LastDirectory) {
 		fmt.Printf("Stored directory does not exist: %s\n", c.LastDirectory)
 		return false
 	}
-	
+
 	// Try to read the directory contents
 	entries, err := os.ReadDir(c.LastDirectory)
 	if err != nil {
 		fmt.Printf("Cannot read directory %s: %v\n", c.LastDirectory, err)
 		return false
 	}
-	
+
 	fmt.Printf("Directory %s is accessible with %d entries\n", c.LastDirectory, len(entries))
-	
+
 	// Count audio files
 	audioCount := 0
 	for _, entry := range entries {
@@ -181,7 +188,7 @@ func (c *Config) TestDirectoryAccess() bool {
 			fmt.Printf("  Found audio file: %s\n", name)
 		}
 	}
-	
+
 	fmt.Printf("Found %d audio files in directory\n", audioCount)
 	return true
 }
@@ -190,12 +197,12 @@ func (c *Config) TestDirectoryAccess() bool {
 func LoadPromptContent(actionType string) (string, error) {
 	filename := fmt.Sprintf("prompt-%s.txt", actionType)
 	filepath := filepath.Join("./config", filename)
-	
+
 	content, err := os.ReadFile(filepath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read prompt file %s: %v", filename, err)
 	}
-	
+
 	return string(content), nil
 }
 
@@ -203,26 +210,21 @@ func LoadPromptContent(actionType string) (string, error) {
 func SavePromptContent(actionType, content string) error {
 	filename := fmt.Sprintf("prompt-%s.txt", actionType)
 	filepath := filepath.Join("./config", filename)
-	
+
 	// Ensure config directory exists
 	if err := os.MkdirAll("./config", 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %v", err)
 	}
-	
+
 	err := os.WriteFile(filepath, []byte(content), 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write prompt file %s: %v", filename, err)
 	}
-	
+
 	return nil
 }
 
 // Contains checks if a slice contains a string
 func Contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, item)
 }
