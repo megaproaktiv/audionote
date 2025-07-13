@@ -20,6 +20,7 @@ type Config struct {
 	LastDirectory  string `mapstructure:"last_directory"`
 	S3Bucket       string `mapstructure:"s3_bucket"`
 	AWSProfile     string `mapstructure:"aws_profile"`
+	OutputLines    int    `mapstructure:"output_lines"`
 }
 
 // LoadPromptFiles reads all prompt-*.txt files from the config directory
@@ -63,6 +64,7 @@ func InitConfig() *Config {
 	viper.SetDefault("last_directory", documentsDir)
 	viper.SetDefault("s3_bucket", "")
 	viper.SetDefault("aws_profile", "default")
+	viper.SetDefault("output_lines", 10)
 
 	// Try to read existing config
 	if err := viper.ReadInConfig(); err != nil {
@@ -83,6 +85,13 @@ func InitConfig() *Config {
 	if config.LastDirectory == "" || !DirExists(config.LastDirectory) {
 		config.LastDirectory = documentsDir
 	}
+	
+	// Validate OutputLines - ensure it's between 5 and 50
+	if config.OutputLines < 5 {
+		config.OutputLines = 10
+	} else if config.OutputLines > 50 {
+		config.OutputLines = 50
+	}
 
 	return &config
 }
@@ -94,6 +103,7 @@ func (c *Config) Save() {
 	viper.Set("last_directory", c.LastDirectory)
 	viper.Set("s3_bucket", c.S3Bucket)
 	viper.Set("aws_profile", c.AWSProfile)
+	viper.Set("output_lines", c.OutputLines)
 
 	// Ensure config directory exists
 	if err := os.MkdirAll("./config", 0755); err != nil {

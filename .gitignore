@@ -1,2 +1,4 @@
 audionote-config
 dist
+.DS_Store
+summary/output

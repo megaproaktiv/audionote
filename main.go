@@ -2,9 +2,12 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -19,6 +22,141 @@ import (
 	"github.com/megaproaktiv/audionote-config/llm"
 	"github.com/megaproaktiv/audionote-config/translate"
 )
+
+// OutputCapture manages stdout redirection to a text widget
+type OutputCapture struct {
+	originalStdout *os.File
+	pipeReader     *os.File
+	pipeWriter     *os.File
+	textWidget     *widget.Entry
+	mutex          sync.Mutex
+}
+
+// NewOutputCapture creates a new output capture instance
+func NewOutputCapture(textWidget *widget.Entry) (*OutputCapture, error) {
+	// Create a pipe
+	r, w, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+
+	oc := &OutputCapture{
+		originalStdout: os.Stdout,
+		pipeReader:     r,
+		pipeWriter:     w,
+		textWidget:     textWidget,
+	}
+
+	// Redirect stdout to our pipe
+	os.Stdout = w
+
+	// Start reading from the pipe in a goroutine
+	go oc.readOutput()
+
+	return oc, nil
+}
+
+// readOutput reads from the pipe and updates the text widget
+func (oc *OutputCapture) readOutput() {
+	buffer := make([]byte, 1024)
+	for {
+		n, err := oc.pipeReader.Read(buffer)
+		if err != nil {
+			if err != io.EOF {
+				log.Printf("Error reading from pipe: %v", err)
+			}
+			break
+		}
+
+		if n > 0 {
+			// Write to original stdout
+			oc.originalStdout.Write(buffer[:n])
+
+			// Update text widget
+			text := string(buffer[:n])
+			text = strings.TrimRight(text, "\n\r")
+			if text != "" {
+				oc.mutex.Lock()
+				currentText := oc.textWidget.Text
+				if currentText != "" {
+					newText := currentText + "\n" + text
+					oc.textWidget.SetText(newText)
+				} else {
+					oc.textWidget.SetText(text)
+				}
+				// Move cursor to end for auto-scroll effect
+				oc.textWidget.CursorRow = len(strings.Split(oc.textWidget.Text, "\n")) - 1
+				oc.textWidget.CursorColumn = len(strings.Split(oc.textWidget.Text, "\n")[oc.textWidget.CursorRow])
+				oc.mutex.Unlock()
+			}
+		}
+	}
+}
+
+// Close restores original stdout and closes the pipe
+func (oc *OutputCapture) Close() {
+	os.Stdout = oc.originalStdout
+	oc.pipeWriter.Close()
+	oc.pipeReader.Close()
+}
+
+// AdaptiveContainer is a container that adapts the output field size on resize
+type AdaptiveContainer struct {
+	*container.Split
+	outputField *widget.Entry
+	config      *configuration.Config
+}
+
+// NewAdaptiveContainer creates a new adaptive container
+func NewAdaptiveContainer(left, right fyne.CanvasObject, outputField *widget.Entry, config *configuration.Config) *AdaptiveContainer {
+	split := container.NewHSplit(left, right)
+	split.SetOffset(0.5)
+
+	return &AdaptiveContainer{
+		Split:       split,
+		outputField: outputField,
+		config:      config,
+	}
+}
+
+// Resize handles container resize and adapts output field size
+func (ac *AdaptiveContainer) Resize(size fyne.Size) {
+	ac.Split.Resize(size)
+
+	// Adapt output field size based on available space
+	if size.Height > 600 && ac.outputField != nil {
+		// Calculate available height for output field (reserve space for other UI elements)
+		availableHeight := size.Height - 500                // Reserve space for other elements including separators
+		minHeight := float32(ac.config.OutputLines*22 + 50) // Match the new sizing calculation
+
+		if availableHeight > minHeight {
+			// Use the larger of configured minimum or available space
+			newHeight := availableHeight * 0.3 // Use 30% of available space
+			if newHeight < minHeight {
+				newHeight = minHeight
+			}
+			if newHeight > 400 { // Cap at reasonable maximum
+				newHeight = 400
+			}
+			// Resize both the output field and ensure it's properly displayed
+			ac.outputField.Resize(fyne.NewSize(450, newHeight))
+		}
+	}
+}
+
+// updateOutputFieldSize updates the output field size based on configuration
+func updateOutputFieldSize(outputField *widget.Entry, config *configuration.Config) {
+	// Calculate height based on configured output lines (increased per-line height and padding)
+	outputHeight := float32(config.OutputLines*22 + 50)
+	if outputHeight < 220 { // Minimum height
+		outputHeight = 220
+	}
+	if outputHeight > 400 { // Maximum height for reasonable display
+		outputHeight = 400
+	}
+	outputField.Resize(fyne.NewSize(450, outputHeight))
+	fmt.Printf("Output field resized for %d lines (height: %.0f)\n", config.OutputLines, outputHeight)
+}
 
 // showAboutDialog displays the About dialog
 func showAboutDialog(w fyne.Window) {
@@ -52,7 +190,7 @@ A desktop application for configuring and processing audio notes using Large Lan
 }
 
 // showConfigDialog displays the configuration dialog
-func showConfigDialog(w fyne.Window, config *configuration.Config) {
+func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *widget.Entry) {
 	// Create entry widgets for configuration
 	s3BucketEntry := widget.NewEntry()
 	s3BucketEntry.SetText(config.S3Bucket)
@@ -62,9 +200,20 @@ func showConfigDialog(w fyne.Window, config *configuration.Config) {
 	awsProfileEntry.SetText(config.AWSProfile)
 	awsProfileEntry.SetPlaceHolder("Enter AWS profile name (e.g., default)")
 
+	// Create output lines slider
+	outputLinesSlider := widget.NewSlider(5, 50)
+	outputLinesSlider.SetValue(float64(config.OutputLines))
+	outputLinesSlider.Step = 1
+
+	outputLinesLabel := widget.NewLabel(fmt.Sprintf("Output Lines: %d", config.OutputLines))
+	outputLinesSlider.OnChanged = func(value float64) {
+		outputLinesLabel.SetText(fmt.Sprintf("Output Lines: %d", int(value)))
+	}
+
 	// Create labels with descriptions
 	s3Label := widget.NewRichTextFromMarkdown("**S3 Bucket:**\nThe AWS S3 bucket where audio files will be stored or retrieved.")
 	awsLabel := widget.NewRichTextFromMarkdown("**AWS Profile:**\nThe AWS CLI profile to use for authentication.")
+	outputLabel := widget.NewRichTextFromMarkdown("**Output Display Lines:**\nMinimum number of lines to display in the output area (5-50).")
 
 	// Create form content
 	formContent := container.NewVBox(
@@ -74,12 +223,16 @@ func showConfigDialog(w fyne.Window, config *configuration.Config) {
 		awsLabel,
 		awsProfileEntry,
 		widget.NewSeparator(),
+		outputLabel,
+		outputLinesLabel,
+		outputLinesSlider,
+		widget.NewSeparator(),
 		widget.NewLabel("Note: Make sure your AWS credentials are properly configured."),
 	)
 
 	// Create dialog
 	configDialog := dialog.NewCustomConfirm(
-		"AWS Configuration Settings",
+		"Configuration Settings",
 		"Save",
 		"Cancel",
 		formContent,
@@ -88,41 +241,72 @@ func showConfigDialog(w fyne.Window, config *configuration.Config) {
 				// Basic validation
 				s3Bucket := s3BucketEntry.Text
 				awsProfile := awsProfileEntry.Text
+				outputLines := int(outputLinesSlider.Value)
 
 				if awsProfile == "" {
 					awsProfile = "default"
 				}
 
+				// Validate output lines
+				if outputLines < 5 {
+					outputLines = 5
+				} else if outputLines > 50 {
+					outputLines = 50
+				}
+
 				// Update configuration
 				config.S3Bucket = s3Bucket
 				config.AWSProfile = awsProfile
+				config.OutputLines = outputLines
 
 				// Save configuration
 				config.Save()
 
+				// Update output field size if it changed
+				if outputField != nil {
+					updateOutputFieldSize(outputField, config)
+				}
+
 				// Show success message
-				successMsg := fmt.Sprintf("AWS configuration saved successfully!\n\nS3 Bucket: %s\nAWS Profile: %s",
-					s3Bucket, awsProfile)
+				successMsg := fmt.Sprintf("Configuration saved successfully!\n\nS3 Bucket: %s\nAWS Profile: %s\nOutput Lines: %d",
+					s3Bucket, awsProfile, outputLines)
 				dialog.ShowInformation("Configuration Saved", successMsg, w)
 
-				fmt.Printf("Configuration updated - S3 Bucket: %s, AWS Profile: %s\n",
-					config.S3Bucket, config.AWSProfile)
+				fmt.Printf("Configuration updated - S3 Bucket: %s, AWS Profile: %s, Output Lines: %d\n",
+					config.S3Bucket, config.AWSProfile, config.OutputLines)
 			}
 		},
 		w,
 	)
 
-	configDialog.Resize(fyne.NewSize(500, 350))
+	configDialog.Resize(fyne.NewSize(500, 450))
 	configDialog.Show()
 }
 
 func main() {
 	a := app.New()
 	w := a.NewWindow("Audio Note LLM")
-	w.Resize(fyne.NewSize(1000, 600)) // Increased width for editor
+	w.Resize(fyne.NewSize(1400, 900)) // Increased size to fully show output and new tab layout
 
 	// Initialize configuration
 	config := configuration.InitConfig()
+
+	// Create output text field for stdout capture (needed for menu configuration)
+	outputField := widget.NewMultiLineEntry()
+	// to not explode screen
+	maxlines := min(config.OutputLines, 20)
+	maxlines = max(maxlines, 10)
+	outputField.SetMinRowsVisible(maxlines)
+	// outputField.Disable() // Make it read-only
+	outputField.Wrapping = fyne.TextWrapWord
+	outputField.SetPlaceHolder("Application output will appear here...")
+
+	// Style the output field with smaller font
+	outputField.TextStyle = fyne.TextStyle{
+		Monospace: true, // Use monospace font for better readability
+	}
+
+	// Note: Size will be set when creating the scroll container
 
 	// Create menu
 	aboutMenu := fyne.NewMenu("Help",
@@ -133,7 +317,7 @@ func main() {
 
 	configMenu := fyne.NewMenu("Settings",
 		fyne.NewMenuItem("Configuration...", func() {
-			showConfigDialog(w, config)
+			showConfigDialog(w, config, outputField)
 		}),
 	)
 
@@ -268,6 +452,15 @@ func main() {
 	progressBar := widget.NewProgressBar()
 	progressBar.SetValue(0.0)
 
+	// Set up stdout capture
+	outputCapture, err := NewOutputCapture(outputField)
+	if err != nil {
+		fmt.Printf("Error setting up output capture: %v\n", err)
+	}
+
+	// Add initial message to output
+	fmt.Println("Audio Note LLM started - output will be displayed here")
+
 	// Create save button for prompt editor
 	savePromptButton := widget.NewButtonWithIcon("Save Prompt", theme.DocumentSaveIcon(), func() {
 		currentAction := actionSelect.Selected
@@ -286,6 +479,61 @@ func main() {
 			fmt.Printf("Successfully saved prompt for action type: %s\n", currentAction)
 		}
 	})
+
+	// Prompt editor label
+	promptLabel := widget.NewLabel("Prompt Editor:")
+	promptLabel.TextStyle.Bold = true
+
+	// Create result text field for displaying result.txt content
+	resultField := widget.NewMultiLineEntry()
+	//resultField.Disable() // Make it read-only
+	resultField.Wrapping = fyne.TextWrapWord
+	resultField.SetPlaceHolder("Processing results will appear here...")
+	resultField.TextStyle = fyne.TextStyle{
+		Monospace: false, // Use regular font for results
+	}
+
+	// Load existing result.txt if it exists
+	if resultContent, err := os.ReadFile("result.txt"); err == nil {
+		resultField.SetText(string(resultContent))
+		fmt.Println("Loaded existing result.txt")
+	}
+
+	// Create the right side with AppTabs
+	rightPanel := container.NewAppTabs(
+		// Left tab: Prompt Editor
+		container.NewTabItem("Prompt Editor",
+			container.NewBorder(
+				// Top: Just the label
+				container.NewPadded(promptLabel),
+				// Bottom: Centered save button
+				container.NewPadded(
+					container.NewHBox(
+						layout.NewSpacer(),
+						savePromptButton,
+						layout.NewSpacer(),
+					),
+				),
+				// Left, Right: nil
+				nil, nil,
+				// Center: Maximized scrollable editor
+				container.NewScroll(promptEditor),
+			),
+		),
+		// Right tab: Result
+		container.NewTabItem("Result",
+			container.NewBorder(
+				// Top: Result label
+				container.NewPadded(widget.NewLabel("Processing Result")),
+				// Bottom: nil
+				nil,
+				// Left, Right: nil
+				nil, nil,
+				// Center: Scrollable result field
+				container.NewScroll(resultField),
+			),
+		),
+	)
 
 	// Create the start button
 	var startButton *widget.Button
@@ -306,8 +554,9 @@ func main() {
 		// Simulate progress
 		go func() {
 			startButton.Disable()
+			progressBar.SetValue(float64(30) / 100.0)
 			transcript := translate.Translate(selectedFilePath, config.S3Bucket)
-			progressBar.SetValue(float64(50) / 100.0)
+			progressBar.SetValue(float64(60) / 100.0)
 			promptData, err := configuration.LoadPromptContent("blog")
 			if err != nil {
 				log.Fatalf("Error loading prompt: %v", err)
@@ -324,6 +573,20 @@ func main() {
 				log.Fatalf("Error writing result.txt: %v", err)
 			}
 			fmt.Println("Done. Result written to result.txt")
+
+			// Load result into the result tab
+			resultContent, err := os.ReadFile("result.txt")
+			if err != nil {
+				fmt.Printf("Error reading result.txt: %v\n", err)
+				resultField.SetText("Error loading result file")
+			} else {
+				resultField.SetText(string(resultContent))
+				fmt.Println("Result loaded into Result tab")
+			}
+
+			// Switch to the Result tab to show the result
+			rightPanel.SelectTab(rightPanel.Items[1]) // Switch to second tab (Result)
+
 			progressBar.SetValue(1.0)
 			fmt.Println("Process completed!")
 			startButton.Enable()
@@ -347,9 +610,14 @@ func main() {
 	progressLabel := widget.NewLabel("Progress:")
 	progressLabel.TextStyle.Bold = true
 
-	// Prompt editor label
-	promptLabel := widget.NewLabel("Prompt Editor:")
-	promptLabel.TextStyle.Bold = true
+	// Output field label
+	outputLabel := widget.NewLabel("Output:")
+	outputLabel.TextStyle.Bold = true
+	// Clear output button
+	clearOutputButton := widget.NewButtonWithIcon("Clear", theme.DeleteIcon(), func() {
+		outputField.SetText("")
+		fmt.Println("Output cleared")
+	})
 
 	// Create the left side configuration panel
 	leftPanel := container.NewVBox(
@@ -364,52 +632,52 @@ func main() {
 				fileLabel,
 				fileSelector,
 				directoryLabel,
+				widget.NewSeparator(),
+				// Start button moved here, under directory line
+				container.NewHBox(
+					startButton,
+					layout.NewSpacer(),
+				),
 			),
 		),
 		widget.NewSeparator(),
 		container.NewVBox(
 			progressLabel,
 			progressBar,
+			widget.NewSeparator(),
 		),
-		layout.NewSpacer(),
-		container.NewHBox(
-			layout.NewSpacer(),
-			startButton,
-			layout.NewSpacer(),
-		),
-	)
-
-	// Create the right side editor panel - fully maximized editor
-	rightPanel := container.NewBorder(
-		// Top: Just the label
-		container.NewPadded(promptLabel),
-		// Bottom: Centered save button
-		container.NewPadded(
-			container.NewHBox(
-				layout.NewSpacer(),
-				savePromptButton,
-				layout.NewSpacer(),
+		// Output label with clear button on the right
+		container.NewBorder(
+			// Top: Just the label
+			container.NewPadded(outputLabel),
+			// Bottom: Centered save button
+			outputField,
+			container.NewVBox(
+				clearOutputButton,
 			),
+			// Left, Right:
+			nil,
+
+			nil,
+			// Center: Maximized scrollable editor
 		),
-		// Left, Right: nil
-		nil, nil,
-		// Center: Maximized scrollable editor
-		container.NewScroll(promptEditor),
 	)
 
-	// Create horizontal split with left and right panels
-	content := container.NewHSplit(leftPanel, rightPanel)
-	content.SetOffset(0.5) // Equal split
+	// Create adaptive horizontal split with left and right panels
+	content := NewAdaptiveContainer(leftPanel, rightPanel, outputField, config)
 
 	// Add some padding around the content
 	paddedContent := container.NewPadded(content)
 
 	w.SetContent(paddedContent)
 
-	// Save config when window closes
-	w.SetCloseIntercept(func() {
+	// Set up window close handler
+	w.SetOnClosed(func() {
+		// Restore original stdout
+		if outputCapture != nil {
+			outputCapture.Close()
+		}
 		config.Save()
-		w.Close()
 	})
 
 	w.ShowAndRun()

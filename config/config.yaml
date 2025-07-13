@@ -1,5 +1,6 @@
 aws_profile: letstrain
-last_action_type: call-to-action
+last_action_type: paper
 last_directory: /Users/megaproaktiv/Documents/letsbuild/audionote-llm
 last_language: en-US
+output_lines: 10
 s3_bucket: dateneimer
