@@ -471,6 +471,7 @@ func main() {
 
 	// Create output path selector
 	var outputPathSelector *widget.Button
+	var outputDirectoryLabel *widget.Label
 	outputPathSelector = widget.NewButton("Select Output Path", func() {
 		// Store current directory to restore later
 		currentDir, _ := os.Getwd()
@@ -502,10 +503,9 @@ func main() {
 			outputPathSelector.SetText(fmt.Sprintf("Selected: %s", filepath.Base(selectedPath)))
 			fmt.Printf("Output path selected: %s\n", selectedPath)
 
-			// Update last used directory for output files
-			config.LastDirectory = filepath.Dir(selectedPath)
-			directoryLabel.SetText(fmt.Sprintf("Directory: %s", config.LastDirectory))
-			fmt.Printf("Updated last directory to: %s\n", config.LastDirectory)
+			// Update output directory label
+			outputDirectoryLabel.SetText(fmt.Sprintf("Output Directory: %s", filepath.Dir(selectedPath)))
+			fmt.Printf("Updated output directory to: %s\n", filepath.Dir(selectedPath))
 		}, w)
 
 		// Set file filter for text files
@@ -714,9 +714,12 @@ func main() {
 	outputPathLabel := widget.NewLabel("Output Path:")
 	outputPathLabel.TextStyle.Bold = true
 
-	// Directory display label
-	directoryLabel = widget.NewLabel(fmt.Sprintf("Directory: %s", config.LastDirectory))
+	// Directory display labels
+	directoryLabel = widget.NewLabel(fmt.Sprintf("Input Directory: %s", config.LastDirectory))
 	directoryLabel.TextStyle.Italic = true
+
+	outputDirectoryLabel = widget.NewLabel(fmt.Sprintf("Output Directory: %s", filepath.Dir(config.OutputPath)))
+	outputDirectoryLabel.TextStyle.Italic = true
 
 	progressLabel := widget.NewLabel("Progress:")
 	progressLabel.TextStyle.Bold = true
@@ -742,10 +745,11 @@ func main() {
 				widget.NewSeparator(),
 				fileLabel,
 				fileSelector,
+				directoryLabel,
 				widget.NewSeparator(),
 				outputPathLabel,
 				outputPathSelector,
-				directoryLabel,
+				outputDirectoryLabel,
 				widget.NewSeparator(),
 				// Start button moved here, under directory line
 				container.NewHBox(
