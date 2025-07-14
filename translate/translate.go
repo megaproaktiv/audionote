@@ -2,8 +2,10 @@ package translate
 
 import (
 	"context"
+	"fmt"
 	"log"
 
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/aws-sdk-go-v2/service/transcribe"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -11,12 +13,20 @@ import (
 
 var Client *transcribe.Client
 
-func InitClient(profile string) error {
-	cfg, err := config.LoadDefaultConfig(context.TODO(),
+func InitClient(ctx context.Context, profile string) error {
+	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithSharedConfigProfile(profile))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
+
+	// Test AWS identity using STS GetCallerIdentity
+	stsClient := sts.NewFromConfig(cfg)
+	_, err = stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return fmt.Errorf("failed to verify AWS identity: %w", err)
+	}
+
 	Client = transcribe.NewFromConfig(cfg)
 	return nil
 }

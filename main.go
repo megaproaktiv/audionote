@@ -562,7 +562,7 @@ func main() {
 			progressBar.SetValue(float64(30) / 100.0)
 			fmt.Printf("Starting transcription with language: %s\n", language)
 			awsProfile := config.AWSProfile
-			err = translate.InitClient(awsProfile)
+			err = translate.InitClient(ctx, awsProfile)
 			if err != nil {
 				progressBar.SetValue(float64(0.0))
 				fmt.Println("Could not load AWS profile: ", awsProfile)
