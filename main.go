@@ -77,18 +77,21 @@ func (oc *OutputCapture) readOutput() {
 			text := string(buffer[:n])
 			text = strings.TrimRight(text, "\n\r")
 			if text != "" {
-				oc.mutex.Lock()
-				currentText := oc.textWidget.Text
-				if currentText != "" {
-					newText := currentText + "\n" + text
-					oc.textWidget.SetText(newText)
-				} else {
-					oc.textWidget.SetText(text)
-				}
-				// Move cursor to end for auto-scroll effect
-				oc.textWidget.CursorRow = len(strings.Split(oc.textWidget.Text, "\n")) - 1
-				oc.textWidget.CursorColumn = len(strings.Split(oc.textWidget.Text, "\n")[oc.textWidget.CursorRow])
-				oc.mutex.Unlock()
+				// Use fyne.Do to ensure UI updates happen on main thread
+				fyne.Do(func() {
+					oc.mutex.Lock()
+					currentText := oc.textWidget.Text
+					if currentText != "" {
+						newText := currentText + "\n" + text
+						oc.textWidget.SetText(newText)
+					} else {
+						oc.textWidget.SetText(text)
+					}
+					// Move cursor to end for auto-scroll effect
+					oc.textWidget.CursorRow = len(strings.Split(oc.textWidget.Text, "\n")) - 1
+					oc.textWidget.CursorColumn = len(strings.Split(oc.textWidget.Text, "\n")[oc.textWidget.CursorRow])
+					oc.mutex.Unlock()
+				})
 			}
 		}
 	}
@@ -201,6 +204,11 @@ func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *
 	awsProfileEntry.SetText(config.AWSProfile)
 	awsProfileEntry.SetPlaceHolder("Enter AWS profile name (e.g., default)")
 
+	// Create output path entry
+	outputPathEntry := widget.NewEntry()
+	outputPathEntry.SetText(config.OutputPath)
+	outputPathEntry.SetPlaceHolder("Enter output file path (e.g., /path/to/result.txt)")
+
 	// Create output lines slider
 	outputLinesSlider := widget.NewSlider(5, 50)
 	outputLinesSlider.SetValue(float64(config.OutputLines))
@@ -214,6 +222,7 @@ func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *
 	// Create labels with descriptions
 	s3Label := widget.NewRichTextFromMarkdown("**S3 Bucket:**\nThe AWS S3 bucket where audio files will be stored or retrieved.")
 	awsLabel := widget.NewRichTextFromMarkdown("**AWS Profile:**\nThe AWS CLI profile to use for authentication.")
+	outputPathLabel := widget.NewRichTextFromMarkdown("**Output File Path:**\nThe path where the processing result will be saved.")
 	outputLabel := widget.NewRichTextFromMarkdown("**Output Display Lines:**\nMinimum number of lines to display in the output area (5-50).")
 
 	// Create form content
@@ -223,6 +232,9 @@ func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *
 		widget.NewSeparator(),
 		awsLabel,
 		awsProfileEntry,
+		widget.NewSeparator(),
+		outputPathLabel,
+		outputPathEntry,
 		widget.NewSeparator(),
 		outputLabel,
 		outputLinesLabel,
@@ -242,10 +254,16 @@ func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *
 				// Basic validation
 				s3Bucket := s3BucketEntry.Text
 				awsProfile := awsProfileEntry.Text
+				outputPath := outputPathEntry.Text
 				outputLines := int(outputLinesSlider.Value)
 
 				if awsProfile == "" {
 					awsProfile = "default"
+				}
+
+				// Validate output path
+				if outputPath == "" {
+					outputPath = filepath.Join(config.LastDirectory, "result.txt")
 				}
 
 				// Validate output lines
@@ -258,6 +276,7 @@ func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *
 				// Update configuration
 				config.S3Bucket = s3Bucket
 				config.AWSProfile = awsProfile
+				config.OutputPath = outputPath
 				config.OutputLines = outputLines
 
 				// Save configuration
@@ -269,12 +288,12 @@ func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *
 				}
 
 				// Show success message
-				successMsg := fmt.Sprintf("Configuration saved successfully!\n\nS3 Bucket: %s\nAWS Profile: %s\nOutput Lines: %d",
-					s3Bucket, awsProfile, outputLines)
+				successMsg := fmt.Sprintf("Configuration saved successfully!\n\nS3 Bucket: %s\nAWS Profile: %s\nOutput Path: %s\nOutput Lines: %d",
+					s3Bucket, awsProfile, outputPath, outputLines)
 				dialog.ShowInformation("Configuration Saved", successMsg, w)
 
-				fmt.Printf("Configuration updated - S3 Bucket: %s, AWS Profile: %s, Output Lines: %d\n",
-					config.S3Bucket, config.AWSProfile, config.OutputLines)
+				fmt.Printf("Configuration updated - S3 Bucket: %s, AWS Profile: %s, Output Path: %s, Output Lines: %d\n",
+					config.S3Bucket, config.AWSProfile, config.OutputPath, config.OutputLines)
 			}
 		},
 		w,
@@ -330,11 +349,11 @@ func main() {
 	actionTypes, err := configuration.LoadPromptFiles()
 	if err != nil {
 		fmt.Printf("Error loading prompt files: %v\n", err)
-		actionTypes = []string{"summary", "call to action", "criticize"} // fallback
+		actionTypes = []string{"blog", "paper", "requirements", "call-to-action"} // fallback
 	}
 
 	if len(actionTypes) == 0 {
-		actionTypes = []string{"summary", "call to action", "criticize"} // fallback
+		actionTypes = []string{"blog", "paper", "requirements", "call-to-action"} // fallback
 	}
 
 	fmt.Printf("Loaded action types: %v\n", actionTypes)
@@ -450,6 +469,66 @@ func main() {
 		dialog.Show()
 	})
 
+	// Create output path selector
+	var outputPathSelector *widget.Button
+	outputPathSelector = widget.NewButton("Select Output Path", func() {
+		// Store current directory to restore later
+		currentDir, _ := os.Getwd()
+		fmt.Printf("Current working directory: %s\n", currentDir)
+
+		// Set the directory for the dialog (use the directory of current output path if it exists)
+		outputDir := filepath.Dir(config.OutputPath)
+		if outputDir != "" && configuration.DirExists(outputDir) {
+			if err := os.Chdir(outputDir); err != nil {
+				fmt.Printf("Could not set output directory: %v\n", err)
+			}
+		}
+
+		dialog := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
+			// Always restore original directory first
+			configuration.RestoreDirectory(currentDir)
+
+			if err != nil {
+				fmt.Printf("Error selecting output file: %v\n", err)
+				return
+			}
+			if writer == nil {
+				return
+			}
+			defer writer.Close()
+
+			selectedPath := writer.URI().Path()
+			config.OutputPath = selectedPath
+			outputPathSelector.SetText(fmt.Sprintf("Selected: %s", filepath.Base(selectedPath)))
+			fmt.Printf("Output path selected: %s\n", selectedPath)
+
+			// Update last used directory for output files
+			config.LastDirectory = filepath.Dir(selectedPath)
+			directoryLabel.SetText(fmt.Sprintf("Directory: %s", config.LastDirectory))
+			fmt.Printf("Updated last directory to: %s\n", config.LastDirectory)
+		}, w)
+
+		// Set file filter for text files
+		dialog.SetFilter(storage.NewExtensionFileFilter([]string{".txt", ".md"}))
+
+		// Set default filename
+		dialog.SetFileName("result.txt")
+
+		// Also try to set location via URI (additional method)
+		if dirURI := config.GetDirectoryURI(); dirURI != nil {
+			// Try to cast to ListableURI for SetLocation
+			if listableURI, ok := dirURI.(fyne.ListableURI); ok {
+				dialog.SetLocation(listableURI)
+				fmt.Printf("Also set dialog URI location to: %s\n", config.LastDirectory)
+			} else {
+				fmt.Printf("URI is not listable, relying on directory change method\n")
+			}
+		}
+
+		fmt.Printf("Opening output file dialog (should start in: %s)\n", config.LastDirectory)
+		dialog.Show()
+	})
+
 	// Create progress bar
 	progressBar := widget.NewProgressBar()
 	progressBar.SetValue(0.0)
@@ -495,10 +574,10 @@ func main() {
 		Monospace: false, // Use regular font for results
 	}
 
-	// Load existing result.txt if it exists
-	if resultContent, err := os.ReadFile("result.txt"); err == nil {
+	// Load existing result file if it exists
+	if resultContent, err := os.ReadFile(config.OutputPath); err == nil {
 		resultField.SetText(string(resultContent))
-		fmt.Println("Loaded existing result.txt")
+		fmt.Printf("Loaded existing result from %s\n", config.OutputPath)
 	}
 
 	// Create the right side with AppTabs
@@ -558,20 +637,26 @@ func main() {
 		// * Start processing                                      *
 		// *********************************************************
 		go func() {
-			startButton.Disable()
-			progressBar.SetValue(float64(30) / 100.0)
+			fyne.Do(func() {
+				startButton.Disable()
+				progressBar.SetValue(float64(30) / 100.0)
+			})
 			fmt.Printf("Starting transcription with language: %s\n", language)
 			awsProfile := config.AWSProfile
 			err = translate.InitClient(awsProfile)
 			if err != nil {
-				progressBar.SetValue(float64(0.0))
-				fmt.Println("Could not load AWS profile: ", awsProfile)
-				startButton.Enable()
+				fyne.Do(func() {
+					progressBar.SetValue(float64(0.0))
+					fmt.Println("Could not load AWS profile: ", awsProfile)
+					startButton.Enable()
+				})
 				return
 			}
 			transcript := translate.Translate(ctx, translate.Client, selectedFilePath, config.S3Bucket, language)
-			progressBar.SetValue(float64(60) / 100.0)
-			promptData, err := configuration.LoadPromptContent("blog")
+			fyne.Do(func() {
+				progressBar.SetValue(float64(60) / 100.0)
+			})
+			promptData, err := configuration.LoadPromptContent(action)
 			if err != nil {
 				log.Fatalf("Error loading prompt: %v", err)
 			}
@@ -582,28 +667,36 @@ func main() {
 				log.Fatalf("Error calling Bedrock: %v", err)
 			}
 
-			err = os.WriteFile("result.txt", []byte(bedrockResult), 0644)
+			err = os.WriteFile(config.OutputPath, []byte(bedrockResult), 0644)
 			if err != nil {
-				log.Fatalf("Error writing result.txt: %v", err)
+				log.Fatalf("Error writing result to %s: %v", config.OutputPath, err)
 			}
-			fmt.Println("Done. Result written to result.txt")
+			fmt.Printf("Done. Result written to %s\n", config.OutputPath)
 
 			// Load result into the result tab
-			resultContent, err := os.ReadFile("result.txt")
+			resultContent, err := os.ReadFile(config.OutputPath)
 			if err != nil {
-				fmt.Printf("Error reading result.txt: %v\n", err)
-				resultField.SetText("Error loading result file")
+				fmt.Printf("Error reading result from %s: %v\n", config.OutputPath, err)
+				fyne.Do(func() {
+					resultField.SetText("Error loading result file")
+				})
 			} else {
-				resultField.SetText(string(resultContent))
-				fmt.Println("Result loaded into Result tab")
+				fyne.Do(func() {
+					resultField.SetText(string(resultContent))
+					fmt.Println("Result loaded into Result tab")
+				})
 			}
 
 			// Switch to the Result tab to show the result
-			rightPanel.SelectTab(rightPanel.Items[1]) // Switch to second tab (Result)
+			fyne.Do(func() {
+				rightPanel.SelectTab(rightPanel.Items[1]) // Switch to second tab (Result)
+			})
 
-			progressBar.SetValue(1.0)
-			fmt.Println("Process completed!")
-			startButton.Enable()
+			fyne.Do(func() {
+				progressBar.SetValue(1.0)
+				fmt.Println("Process completed!")
+				startButton.Enable()
+			})
 		}()
 	})
 
@@ -616,6 +709,10 @@ func main() {
 
 	fileLabel := widget.NewLabel("Audio File:")
 	fileLabel.TextStyle.Bold = true
+
+	// Output path label
+	outputPathLabel := widget.NewLabel("Output Path:")
+	outputPathLabel.TextStyle.Bold = true
 
 	// Directory display label
 	directoryLabel = widget.NewLabel(fmt.Sprintf("Directory: %s", config.LastDirectory))
@@ -645,6 +742,9 @@ func main() {
 				widget.NewSeparator(),
 				fileLabel,
 				fileSelector,
+				widget.NewSeparator(),
+				outputPathLabel,
+				outputPathSelector,
 				directoryLabel,
 				widget.NewSeparator(),
 				// Start button moved here, under directory line

@@ -1,11 +1,62 @@
-Write all main topics with headline and summary and main call to cation from the text.
+You are an expert for AWS company certifications and are given a transcript of my thoughts covering multiple topics of a project I was working in. We want to use this project as  an example why we deserve this certificate ftom AWS.
+You have to cover all these things and write an extensive summary for every single point if you can. At points, where I refer to the success story or other source you dont know, mark it accordingly.
 
-In the form:
-## Number Headline
-Summary
-- Statement 1
-- Statement 2
+The form should adapt to the input points and try to cover as much as possible:
+7. QUANTITATIVE BUSINESS METRICS
+7.1 Financial Impact Measurements
+Cost savings: specific reductions and amounts
 
-Call to Action
+Efficiency gains:
 
-Text:
+Time reduction in key processes (percentage faster)
+
+Volume increase capacity (percentage more throughput)
+
+Resource efficiency improvements
+
+Revenue impact: generation or protection
+
+7.2 Before/After Metrics Comparison
+Table of specific metrics before and after implementation
+
+Tracking and validation methods
+
+Measurement timeframe for results
+
+8. CUSTOMER TESTIMONIAL ELEMENTS
+8.1 Customer Satisfaction & Outcomes
+Customer statements about business transformation
+
+Awards, recognition, or published case studies
+
+9. DOCUMENTATION EVIDENCE
+9.1 Available Project Documentation
+Statement of Work (SOW)
+
+Project Plans
+
+Sprint Plans
+
+Project Timeline/Gantt charts
+
+Assessment documents and results
+
+Frameworks used
+
+Project Proposals
+
+Architecture documents
+
+Deployment guides
+
+Customer communications showing GenAI practice involvement
+
+Other deliverables
+
+9.2 Evidence Details
+Documents showing GenAI practice involvement
+
+Customer sign-off on project deliverables
+
+Customer presentations or executive briefings delivered
+

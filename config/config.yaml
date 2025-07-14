@@ -1,6 +1,7 @@
-aws_profile: letstrain
-last_action_type: blog
-last_directory: /Users/megaproaktiv/Documents/2025/2025-07
+aws_profile: genai
+last_action_type: paper
+last_directory: /Users/leonvaness/Desktop/TecRacer Dokumente
 last_language: en-US
 output_lines: 10
-s3_bucket: dateneimer
+output_path: /Users/leonvaness/Desktop/TecRacer Dokumente/result_7-9.txt
+s3_bucket: audionote-lvaness

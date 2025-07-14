@@ -31,15 +31,23 @@ func StartTranscribeJob(ctx context.Context, client *transcribe.Client, bucket, 
 	mediaURI := fmt.Sprintf("s3://%s/%s", bucket, mp3Key)
 	fmt.Printf("Starting transcription job '%s' for %s with language %s...\n", jobName, mediaURI, languageCode)
 	outputKey := fmt.Sprintf("summary/output/%s.json", jobName)
-	media := fmt.Sprintf("MediaFileUri=%s", mediaURI)
 	mediaFormat := types.MediaFormatM4a
+
+	// Convert language code to AWS Transcribe format
+	var languageCodeType types.LanguageCode
+	switch languageCode {
+	case "en-US":
+		languageCodeType = types.LanguageCodeEnUs
+	case "de-DE":
+		languageCodeType = types.LanguageCodeDeDe
+	default:
+		languageCodeType = types.LanguageCodeEnUs
+	}
+
 	params := transcribe.StartTranscriptionJobInput{
-		Media:                &types.Media{MediaFileUri: &media},
+		Media:                &types.Media{MediaFileUri: &mediaURI},
 		TranscriptionJobName: &jobName,
-		IdentifyLanguage:     aws.Bool(true),
-		LanguageCode:         "",
-		LanguageIdSettings:   map[string]types.LanguageIdSettings{},
-		LanguageOptions:      []types.LanguageCode{},
+		LanguageCode:         languageCodeType,
 		MediaFormat:          mediaFormat,
 		MediaSampleRateHertz: aws.Int32(48000),
 		OutputBucketName:     &bucket,

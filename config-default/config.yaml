@@ -3,4 +3,5 @@ last_action_type: blog
 last_directory: /
 last_language: en-US
 output_lines: 10
+output_path: /result.txt
 s3_bucket: tbd
