@@ -2,3 +2,6 @@ audionote-config
 dist
 .DS_Store
 summary/output
+
+*m4a
+result*.txt

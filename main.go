@@ -104,50 +104,6 @@ func (oc *OutputCapture) Close() {
 	oc.pipeReader.Close()
 }
 
-// AdaptiveContainer is a container that adapts the output field size on resize
-type AdaptiveContainer struct {
-	*container.Split
-	outputField *widget.Entry
-	config      *configuration.Config
-}
-
-// NewAdaptiveContainer creates a new adaptive container
-func NewAdaptiveContainer(left, right fyne.CanvasObject, outputField *widget.Entry, config *configuration.Config) *AdaptiveContainer {
-	split := container.NewHSplit(left, right)
-	split.SetOffset(0.5)
-
-	return &AdaptiveContainer{
-		Split:       split,
-		outputField: outputField,
-		config:      config,
-	}
-}
-
-// Resize handles container resize and adapts output field size
-func (ac *AdaptiveContainer) Resize(size fyne.Size) {
-	ac.Split.Resize(size)
-
-	// Adapt output field size based on available space
-	if size.Height > 600 && ac.outputField != nil {
-		// Calculate available height for output field (reserve space for other UI elements)
-		availableHeight := size.Height - 500                // Reserve space for other elements including separators
-		minHeight := float32(ac.config.OutputLines*22 + 50) // Match the new sizing calculation
-
-		if availableHeight > minHeight {
-			// Use the larger of configured minimum or available space
-			newHeight := availableHeight * 0.3 // Use 30% of available space
-			if newHeight < minHeight {
-				newHeight = minHeight
-			}
-			if newHeight > 400 { // Cap at reasonable maximum
-				newHeight = 400
-			}
-			// Resize both the output field and ensure it's properly displayed
-			ac.outputField.Resize(fyne.NewSize(450, newHeight))
-		}
-	}
-}
-
 // updateOutputFieldSize updates the output field size based on configuration
 func updateOutputFieldSize(outputField *widget.Entry, config *configuration.Config) {
 	// Calculate height based on configured output lines (increased per-line height and padding)
@@ -781,8 +737,8 @@ func main() {
 		),
 	)
 
-	// Create adaptive horizontal split with left and right panels
-	content := NewAdaptiveContainer(leftPanel, rightPanel, outputField, config)
+	// Create horizontal split with left and right panels
+	content := container.NewHSplit(leftPanel, rightPanel)
 
 	// Add some padding around the content
 	paddedContent := container.NewPadded(content)
