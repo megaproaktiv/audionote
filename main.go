@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -116,6 +117,99 @@ func updateOutputFieldSize(outputField *widget.Entry, config *configuration.Conf
 	}
 	outputField.Resize(fyne.NewSize(450, outputHeight))
 	fmt.Printf("Output field resized for %d lines (height: %.0f)\n", config.OutputLines, outputHeight)
+}
+
+// checkForExistingTranscript checks if a transcript already exists for the given audio file
+func checkForExistingTranscript(audioFilePath, bucket, language string) string {
+	// Generate the expected job name based on the audio file
+	fileName := filepath.Base(audioFilePath)
+	baseName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+
+	// Check for existing transcript files in the local directory
+	// Look for files matching multiple patterns to catch all variations:
+	// 1. summary/output/{baseName}-DMIN-*.json (original filename)
+	// 2. summary/output/{baseName}_Copy-DMIN-*.json (filename with _Copy suffix)
+	// 3. summary/output/{baseName}_copy.{ext}-DMIN-*.json (filename with _copy suffix and extension)
+	outputDir := "summary/output"
+	pattern1 := filepath.Join(outputDir, baseName+"-DMIN-*.json")
+	pattern2 := filepath.Join(outputDir, baseName+"_Copy-DMIN-*.json")
+	pattern3 := filepath.Join(outputDir, baseName+"_copy.*-DMIN-*.json")
+
+	fmt.Printf("Searching for existing transcripts with patterns:\n")
+	fmt.Printf("  Pattern 1: %s\n", pattern1)
+	fmt.Printf("  Pattern 2: %s\n", pattern2)
+	fmt.Printf("  Pattern 3: %s\n", pattern3)
+
+	// Search for all patterns
+	matches1, err := filepath.Glob(pattern1)
+	if err != nil {
+		fmt.Printf("Error searching for existing transcripts (pattern 1): %v\n", err)
+	}
+
+	matches2, err := filepath.Glob(pattern2)
+	if err != nil {
+		fmt.Printf("Error searching for existing transcripts (pattern 2): %v\n", err)
+	}
+
+	matches3, err := filepath.Glob(pattern3)
+	if err != nil {
+		fmt.Printf("Error searching for existing transcripts (pattern 3): %v\n", err)
+	}
+
+	// Combine all matches
+	allMatches := append(matches1, matches2...)
+	allMatches = append(allMatches, matches3...)
+
+	// If we find matching files, try to read the most recent one
+	if len(allMatches) > 0 {
+		fmt.Printf("Found %d matching transcript files\n", len(allMatches))
+		// Sort by modification time to get the most recent
+		var latestFile string
+		var latestTime int64
+
+		for _, match := range allMatches {
+			info, err := os.Stat(match)
+			if err != nil {
+				continue
+			}
+			if info.ModTime().Unix() > latestTime {
+				latestTime = info.ModTime().Unix()
+				latestFile = match
+			}
+		}
+
+		if latestFile != "" {
+			fmt.Printf("Found existing transcript file: %s\n", latestFile)
+			// Try to read and parse the transcript
+			data, err := os.ReadFile(latestFile)
+			if err != nil {
+				fmt.Printf("Error reading existing transcript: %v\n", err)
+				return ""
+			}
+
+			// Parse the JSON to extract the transcript text
+			var transcriptResp struct {
+				Results struct {
+					Transcripts []struct {
+						Transcript string `json:"transcript"`
+					} `json:"transcripts"`
+				} `json:"results"`
+			}
+
+			if err := json.Unmarshal(data, &transcriptResp); err != nil {
+				fmt.Printf("Error parsing existing transcript JSON: %v\n", err)
+				return ""
+			}
+
+			if len(transcriptResp.Results.Transcripts) > 0 {
+				fmt.Printf("Successfully loaded existing transcript (%d characters)\n", len(transcriptResp.Results.Transcripts[0].Transcript))
+				return transcriptResp.Results.Transcripts[0].Transcript
+			}
+		}
+	}
+
+	fmt.Printf("No existing transcript found for %s\n", audioFilePath)
+	return ""
 }
 
 // showAboutDialog displays the About dialog
@@ -595,23 +689,43 @@ func main() {
 		go func() {
 			fyne.Do(func() {
 				startButton.Disable()
-				progressBar.SetValue(float64(30) / 100.0)
+				progressBar.SetValue(float64(10) / 100.0)
 			})
-			fmt.Printf("Starting transcription with language: %s\n", language)
-			awsProfile := config.AWSProfile
-			err = translate.InitClient(awsProfile)
-			if err != nil {
+
+			// Check if transcript already exists
+			fmt.Printf("Checking for existing transcript...\n")
+			existingTranscript := checkForExistingTranscript(selectedFilePath, config.S3Bucket, language)
+
+			var transcript string
+			if existingTranscript != "" {
+				fmt.Printf("Found existing transcript, skipping transcription process\n")
+				transcript = existingTranscript
 				fyne.Do(func() {
-					progressBar.SetValue(float64(0.0))
-					fmt.Println("Could not load AWS profile: ", awsProfile)
-					startButton.Enable()
+					progressBar.SetValue(float64(50) / 100.0)
 				})
-				return
+			} else {
+				fmt.Printf("No existing transcript found, starting transcription with language: %s\n", language)
+				fyne.Do(func() {
+					progressBar.SetValue(float64(20) / 100.0)
+				})
+				awsProfile := config.AWSProfile
+				err = translate.InitClient(awsProfile)
+				if err != nil {
+					fyne.Do(func() {
+						progressBar.SetValue(float64(0.0))
+						fmt.Println("Could not load AWS profile: ", awsProfile)
+						startButton.Enable()
+					})
+					return
+				}
+				fyne.Do(func() {
+					progressBar.SetValue(float64(30) / 100.0)
+				})
+				transcript = translate.Translate(ctx, translate.Client, selectedFilePath, config.S3Bucket, language)
+				fyne.Do(func() {
+					progressBar.SetValue(float64(50) / 100.0)
+				})
 			}
-			transcript := translate.Translate(ctx, translate.Client, selectedFilePath, config.S3Bucket, language)
-			fyne.Do(func() {
-				progressBar.SetValue(float64(60) / 100.0)
-			})
 			promptData, err := configuration.LoadPromptContent(action)
 			if err != nil {
 				log.Fatalf("Error loading prompt: %v", err)
