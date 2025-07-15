@@ -354,15 +354,22 @@ func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *
 }
 
 func main() {
+	//--------------------------------------------------------------
+	// Initialize application and window
+	//--------------------------------------------------------------
 	a := app.New()
 	w := a.NewWindow("Audio Note LLM")
 	w.Resize(fyne.NewSize(1400, 900)) // Increased size to fully show output and new tab layout
 
-	// Initialize configuration
+	//--------------------------------------------------------------
+	// Initialize configuration and context
+	//--------------------------------------------------------------
 	config := configuration.InitConfig()
 	ctx := context.Background()
 
-	// Create output text field for stdout capture (needed for menu configuration)
+	//--------------------------------------------------------------
+	// Create output field for stdout capture
+	//--------------------------------------------------------------
 	outputField := widget.NewMultiLineEntry()
 	// to not explode screen
 	maxlines := min(config.OutputLines, 20)
@@ -379,7 +386,9 @@ func main() {
 
 	// Note: Size will be set when creating the scroll container
 
-	// Create menu
+	//--------------------------------------------------------------
+	// Create application menu
+	//--------------------------------------------------------------
 	aboutMenu := fyne.NewMenu("Help",
 		fyne.NewMenuItem("About Audio Note LLM", func() {
 			showAboutDialog(w)
@@ -395,7 +404,9 @@ func main() {
 	mainMenu := fyne.NewMainMenu(configMenu, aboutMenu)
 	w.SetMainMenu(mainMenu)
 
-	// Load prompt files to populate action types
+	//--------------------------------------------------------------
+	// Load action types from prompt files
+	//--------------------------------------------------------------
 	actionTypes, err := configuration.LoadPromptFiles()
 	if err != nil {
 		fmt.Printf("Error loading prompt files: %v\n", err)
@@ -408,7 +419,9 @@ func main() {
 
 	fmt.Printf("Loaded action types: %v\n", actionTypes)
 
-	// Create editor field for prompt content
+	//--------------------------------------------------------------
+	// Create prompt editor and content loading function
+	//--------------------------------------------------------------
 	promptEditor := widget.NewMultiLineEntry()
 	promptEditor.Wrapping = fyne.TextWrapWord
 	promptEditor.SetPlaceHolder("Select an action type to load its prompt content...")
@@ -425,7 +438,9 @@ func main() {
 		}
 	}
 
-	// Create the select widgets
+	//--------------------------------------------------------------
+	// Create action type selector
+	//--------------------------------------------------------------
 	actionSelect := widget.NewSelect(
 		actionTypes,
 		func(value string) {
@@ -444,9 +459,9 @@ func main() {
 	actionSelect.SetSelected(defaultAction)
 	config.LastActionType = defaultAction
 
-	// Load initial prompt content
-	loadPromptContent(defaultAction)
-
+	//--------------------------------------------------------------
+	// Create language selector
+	//--------------------------------------------------------------
 	languageSelect := widget.NewSelect(
 		[]string{"en-US", "de-DE"},
 		func(value string) {
@@ -463,7 +478,9 @@ func main() {
 		config.LastLanguage = "en-US"
 	}
 
+	//--------------------------------------------------------------
 	// Create file selector for audio files
+	//--------------------------------------------------------------
 	var selectedFilePath string
 	var fileSelector *widget.Button
 	var directoryLabel *widget.Label
@@ -519,7 +536,9 @@ func main() {
 		dialog.Show()
 	})
 
+	//--------------------------------------------------------------
 	// Create output path selector
+	//--------------------------------------------------------------
 	var outputPathSelector *widget.Button
 	var outputDirectoryLabel *widget.Label
 	outputPathSelector = widget.NewButton("Select Output Path", func() {
@@ -579,11 +598,15 @@ func main() {
 		dialog.Show()
 	})
 
+	//--------------------------------------------------------------
 	// Create progress bar
+	//--------------------------------------------------------------
 	progressBar := widget.NewProgressBar()
 	progressBar.SetValue(0.0)
 
+	//--------------------------------------------------------------
 	// Set up stdout capture
+	//--------------------------------------------------------------
 	outputCapture, err := NewOutputCapture(outputField)
 	if err != nil {
 		fmt.Printf("Error setting up output capture: %v\n", err)
@@ -592,6 +615,39 @@ func main() {
 	// Add initial message to output
 	fmt.Println("Audio Note LLM started - output will be displayed here")
 
+	//--------------------------------------------------------------
+	// Create action management functions
+	//--------------------------------------------------------------
+	// Function to refresh action types from directory
+	refreshActionTypes := func() {
+		newActionTypes, err := configuration.LoadPromptFiles()
+		if err != nil {
+			fmt.Printf("Error loading prompt files: %v\n", err)
+			return
+		}
+
+		if len(newActionTypes) == 0 {
+			newActionTypes = []string{"blog", "paper", "requirements", "call-to-action"} // fallback
+		}
+
+		// Update the select widget options
+		actionSelect.Options = newActionTypes
+
+		// If current selection is no longer valid, select the first option
+		if !configuration.Contains(newActionTypes, actionSelect.Selected) {
+			if len(newActionTypes) > 0 {
+				actionSelect.SetSelected(newActionTypes[0])
+				config.LastActionType = newActionTypes[0]
+				loadPromptContent(newActionTypes[0])
+			}
+		}
+
+		fmt.Printf("Refreshed action types: %v\n", newActionTypes)
+	}
+
+	//--------------------------------------------------------------
+	// Create prompt management buttons
+	//--------------------------------------------------------------
 	// Create save button for prompt editor
 	savePromptButton := widget.NewButtonWithIcon("Save Prompt", theme.DocumentSaveIcon(), func() {
 		currentAction := actionSelect.Selected
@@ -611,11 +667,101 @@ func main() {
 		}
 	})
 
+	// Create refresh button for action types
+	refreshActionButton := widget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() {
+		refreshActionTypes()
+		dialog.ShowInformation("Refreshed", "Action types refreshed from directory", w)
+	})
+
+	// Create new action button
+	newActionButton := widget.NewButtonWithIcon("New Action", theme.ContentAddIcon(), func() {
+		// Create a simple dialog to get the new action name
+		actionNameEntry := widget.NewEntry()
+		actionNameEntry.SetPlaceHolder("Enter action name (e.g., summary, analysis, notes)")
+
+		// Validate action name (no spaces, only alphanumeric and hyphens)
+		actionNameEntry.OnChanged = func(text string) {
+			// Remove spaces and special characters
+			cleanText := strings.ReplaceAll(text, " ", "-")
+			cleanText = strings.ToLower(cleanText)
+			// Keep only alphanumeric and hyphens
+			var result strings.Builder
+			for _, char := range cleanText {
+				if (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-' {
+					result.WriteRune(char)
+				}
+			}
+			if result.String() != text {
+				actionNameEntry.SetText(result.String())
+			}
+		}
+
+		content := container.NewVBox(
+			widget.NewLabel("Create a new action type:"),
+			actionNameEntry,
+			widget.NewLabel("This will create a new prompt template file."),
+		)
+
+		confirmDialog := dialog.NewCustomConfirm(
+			"New Action",
+			"Create",
+			"Cancel",
+			content,
+			func(confirmed bool) {
+				if confirmed {
+					actionName := actionNameEntry.Text
+					if actionName == "" {
+						dialog.ShowError(fmt.Errorf("action name cannot be empty"), w)
+						return
+					}
+
+					// Create a default prompt template
+					defaultPrompt := fmt.Sprintf(`# %s Template
+
+Write your own prompt.
+The save the prompt before you want to use it.
+
+Please process the following audio transcript and create a %s:
+
+## Instructions:
+- Analyze the content thoroughly
+- Structure the output clearly
+- Provide actionable insights
+
+
+## %s:`, strings.Title(actionName), actionName, strings.Title(actionName))
+
+					// Save the new prompt
+					err := configuration.SavePromptContent(actionName, defaultPrompt)
+					if err != nil {
+						dialog.ShowError(fmt.Errorf("failed to create new action: %v", err), w)
+						fmt.Printf("Error creating new action %s: %v\n", actionName, err)
+					} else {
+						// Refresh the action types and select the new one
+						refreshActionTypes()
+						actionSelect.SetSelected(actionName)
+						config.LastActionType = actionName
+						loadPromptContent(actionName)
+
+						dialog.ShowInformation("Success", fmt.Sprintf("New action '%s' created successfully!", actionName), w)
+						fmt.Printf("Successfully created new action: %s\n", actionName)
+					}
+				}
+			},
+			w,
+		)
+
+		confirmDialog.Resize(fyne.NewSize(400, 200))
+		confirmDialog.Show()
+	})
+
 	// Prompt editor label
 	promptLabel := widget.NewLabel("Prompt Editor:")
 	promptLabel.TextStyle.Bold = true
 
-	// Create result text field for displaying result.txt content
+	//--------------------------------------------------------------
+	// Create result display field
+	//--------------------------------------------------------------
 	resultField := widget.NewMultiLineEntry()
 	//resultField.Disable() // Make it read-only
 	resultField.Wrapping = fyne.TextWrapWord
@@ -630,7 +776,9 @@ func main() {
 		fmt.Printf("Loaded existing result from %s\n", config.OutputPath)
 	}
 
-	// Create the right side with AppTabs
+	//--------------------------------------------------------------
+	// Create right panel with tabs
+	//--------------------------------------------------------------
 	rightPanel := container.NewAppTabs(
 		// Left tab: Prompt Editor
 		container.NewTabItem("Prompt Editor",
@@ -666,6 +814,9 @@ func main() {
 		),
 	)
 
+	//--------------------------------------------------------------
+	// Create start button and processing logic
+	//--------------------------------------------------------------
 	// Create the start button with Material Design microphone icon
 	// Using emoji + built-in icon for better compatibility
 	var startButton *widget.Button
@@ -683,9 +834,9 @@ func main() {
 
 		fmt.Printf("Starting process with Action: %s, Language: %s, File: %s\n", action, language, selectedFilePath)
 
-		// *********************************************************
-		// * Start processing                                      *
-		// *********************************************************
+		//--------------------------------------------------------------
+		// Start processing
+		//--------------------------------------------------------------
 		go func() {
 			fyne.Do(func() {
 				startButton.Disable()
@@ -770,7 +921,9 @@ func main() {
 		}()
 	})
 
-	// Create form layout with labels
+	//--------------------------------------------------------------
+	// Create UI labels and buttons
+	//--------------------------------------------------------------
 	actionLabel := widget.NewLabel("Action Type:")
 	actionLabel.TextStyle.Bold = true
 
@@ -803,12 +956,18 @@ func main() {
 		fmt.Println("Output cleared")
 	})
 
-	// Create the left side configuration panel
+	//--------------------------------------------------------------
+	// Create left configuration panel
+	//--------------------------------------------------------------
 	leftPanel := container.NewVBox(
 		widget.NewCard("Configuration", "Select your audio note processing options",
 			container.NewVBox(
 				actionLabel,
-				actionSelect,
+				container.NewHBox(
+					actionSelect,
+					refreshActionButton,
+					newActionButton,
+				),
 				widget.NewSeparator(),
 				languageLabel,
 				languageSelect,
@@ -851,7 +1010,9 @@ func main() {
 		),
 	)
 
-	// Create horizontal split with left and right panels
+	//--------------------------------------------------------------
+	// Create main layout and set window content
+	//--------------------------------------------------------------
 	content := container.NewHSplit(leftPanel, rightPanel)
 
 	// Add some padding around the content
@@ -859,7 +1020,9 @@ func main() {
 
 	w.SetContent(paddedContent)
 
-	// Set up window close handler
+	//--------------------------------------------------------------
+	// Set up window close handler and start application
+	//--------------------------------------------------------------
 	w.SetOnClosed(func() {
 		// Restore original stdout
 		if outputCapture != nil {
