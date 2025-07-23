@@ -22,6 +22,7 @@ import (
 
 	"github.com/megaproaktiv/audionote-config/configuration"
 	"github.com/megaproaktiv/audionote-config/llm"
+	appPanel "github.com/megaproaktiv/audionote-config/panel"
 	"github.com/megaproaktiv/audionote-config/translate"
 )
 
@@ -365,7 +366,6 @@ func main() {
 	// Initialize configuration and context
 	//--------------------------------------------------------------
 	config := configuration.InitConfig()
-	ctx := context.Background()
 
 	//--------------------------------------------------------------
 	// Create output field for stdout capture
@@ -779,40 +779,49 @@ Please process the following audio transcript and create a %s:
 	//--------------------------------------------------------------
 	// Create right panel with tabs
 	//--------------------------------------------------------------
-	rightPanel := container.NewAppTabs(
-		// Left tab: Prompt Editor
-		container.NewTabItem("Prompt Editor",
-			container.NewBorder(
-				// Top: Just the label
-				container.NewPadded(promptLabel),
-				// Bottom: Centered save button
-				container.NewPadded(
-					container.NewHBox(
-						layout.NewSpacer(),
-						savePromptButton,
-						layout.NewSpacer(),
-					),
-				),
-				// Left, Right: nil
-				nil, nil,
-				// Center: Maximized scrollable editor
-				container.NewScroll(promptEditor),
-			),
-		),
-		// Right tab: Result
-		container.NewTabItem("Result",
-			container.NewBorder(
-				// Top: Result label
-				container.NewPadded(widget.NewLabel("Processing Result")),
-				// Bottom: nil
-				nil,
-				// Left, Right: nil
-				nil, nil,
-				// Center: Scrollable result field
-				container.NewScroll(resultField),
-			),
-		),
+	rightPanel := appPanel.RightPanel(
+		appPanel.Panel{
+			PromptLabel:      promptLabel,
+			PromptEditor:     promptEditor,
+			ResultField:      resultField,
+			SavePromptButton: savePromptButton,
+		},
 	)
+
+	// container.NewAppTabs(
+	// 	// Left tab: Prompt Editor
+	// 	container.NewTabItem("Prompt Editor",
+	// 		container.NewBorder(
+	// 			// Top: Just the label
+	// 			container.NewPadded(promptLabel),
+	// 			// Bottom: Centered save button
+	// 			container.NewPadded(
+	// 				container.NewHBox(
+	// 					layout.NewSpacer(),
+	//	 					savePromptButton,
+	// 					layout.NewSpacer(),
+	// 				),
+	// 			),
+	// 			// Left, Right: nil
+	// 			nil, nil,
+	// 			// Center: Maximized scrollable editor
+	// 			container.NewScroll(promptEditor),
+	// 		),
+	// 	),
+	// 	// Right tab: Result
+	// 	container.NewTabItem("Result",
+	// 		container.NewBorder(
+	// 			// Top: Result label
+	// 			container.NewPadded(widget.NewLabel("Processing Result")),
+	// 			// Bottom: nil
+	// 			nil,
+	// 			// Left, Right: nil
+	// 			nil, nil,
+	// 			// Center: Scrollable result field
+	// 			container.NewScroll(resultField),
+	// 		),
+	// 	),
+	// )
 
 	//--------------------------------------------------------------
 	// Create start button and processing logic
@@ -842,7 +851,7 @@ Please process the following audio transcript and create a %s:
 				startButton.Disable()
 				progressBar.SetValue(float64(10) / 100.0)
 			})
-
+			ctx := context.Background()
 			// Check if transcript already exists
 			fmt.Printf("Checking for existing transcript...\n")
 			existingTranscript := checkForExistingTranscript(selectedFilePath, config.S3Bucket, language)
@@ -860,7 +869,7 @@ Please process the following audio transcript and create a %s:
 					progressBar.SetValue(float64(20) / 100.0)
 				})
 				awsProfile := config.AWSProfile
-				err = translate.InitClient(awsProfile)
+				err = translate.InitClient(ctx, awsProfile)
 				if err != nil {
 					fyne.Do(func() {
 						progressBar.SetValue(float64(0.0))
