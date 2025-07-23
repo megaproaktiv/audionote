@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -77,18 +78,21 @@ func (oc *OutputCapture) readOutput() {
 			text := string(buffer[:n])
 			text = strings.TrimRight(text, "\n\r")
 			if text != "" {
-				oc.mutex.Lock()
-				currentText := oc.textWidget.Text
-				if currentText != "" {
-					newText := currentText + "\n" + text
-					oc.textWidget.SetText(newText)
-				} else {
-					oc.textWidget.SetText(text)
-				}
-				// Move cursor to end for auto-scroll effect
-				oc.textWidget.CursorRow = len(strings.Split(oc.textWidget.Text, "\n")) - 1
-				oc.textWidget.CursorColumn = len(strings.Split(oc.textWidget.Text, "\n")[oc.textWidget.CursorRow])
-				oc.mutex.Unlock()
+				// Use fyne.Do to ensure UI updates happen on main thread
+				fyne.Do(func() {
+					oc.mutex.Lock()
+					currentText := oc.textWidget.Text
+					if currentText != "" {
+						newText := currentText + "\n" + text
+						oc.textWidget.SetText(newText)
+					} else {
+						oc.textWidget.SetText(text)
+					}
+					// Move cursor to end for auto-scroll effect
+					oc.textWidget.CursorRow = len(strings.Split(oc.textWidget.Text, "\n")) - 1
+					oc.textWidget.CursorColumn = len(strings.Split(oc.textWidget.Text, "\n")[oc.textWidget.CursorRow])
+					oc.mutex.Unlock()
+				})
 			}
 		}
 	}
@@ -99,50 +103,6 @@ func (oc *OutputCapture) Close() {
 	os.Stdout = oc.originalStdout
 	oc.pipeWriter.Close()
 	oc.pipeReader.Close()
-}
-
-// AdaptiveContainer is a container that adapts the output field size on resize
-type AdaptiveContainer struct {
-	*container.Split
-	outputField *widget.Entry
-	config      *configuration.Config
-}
-
-// NewAdaptiveContainer creates a new adaptive container
-func NewAdaptiveContainer(left, right fyne.CanvasObject, outputField *widget.Entry, config *configuration.Config) *AdaptiveContainer {
-	split := container.NewHSplit(left, right)
-	split.SetOffset(0.5)
-
-	return &AdaptiveContainer{
-		Split:       split,
-		outputField: outputField,
-		config:      config,
-	}
-}
-
-// Resize handles container resize and adapts output field size
-func (ac *AdaptiveContainer) Resize(size fyne.Size) {
-	ac.Split.Resize(size)
-
-	// Adapt output field size based on available space
-	if size.Height > 600 && ac.outputField != nil {
-		// Calculate available height for output field (reserve space for other UI elements)
-		availableHeight := size.Height - 500                // Reserve space for other elements including separators
-		minHeight := float32(ac.config.OutputLines*22 + 50) // Match the new sizing calculation
-
-		if availableHeight > minHeight {
-			// Use the larger of configured minimum or available space
-			newHeight := availableHeight * 0.3 // Use 30% of available space
-			if newHeight < minHeight {
-				newHeight = minHeight
-			}
-			if newHeight > 400 { // Cap at reasonable maximum
-				newHeight = 400
-			}
-			// Resize both the output field and ensure it's properly displayed
-			ac.outputField.Resize(fyne.NewSize(450, newHeight))
-		}
-	}
 }
 
 // updateOutputFieldSize updates the output field size based on configuration
@@ -157,6 +117,99 @@ func updateOutputFieldSize(outputField *widget.Entry, config *configuration.Conf
 	}
 	outputField.Resize(fyne.NewSize(450, outputHeight))
 	fmt.Printf("Output field resized for %d lines (height: %.0f)\n", config.OutputLines, outputHeight)
+}
+
+// checkForExistingTranscript checks if a transcript already exists for the given audio file
+func checkForExistingTranscript(audioFilePath, bucket, language string) string {
+	// Generate the expected job name based on the audio file
+	fileName := filepath.Base(audioFilePath)
+	baseName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+
+	// Check for existing transcript files in the local directory
+	// Look for files matching multiple patterns to catch all variations:
+	// 1. summary/output/{baseName}-DMIN-*.json (original filename)
+	// 2. summary/output/{baseName}_Copy-DMIN-*.json (filename with _Copy suffix)
+	// 3. summary/output/{baseName}_copy.{ext}-DMIN-*.json (filename with _copy suffix and extension)
+	outputDir := "summary/output"
+	pattern1 := filepath.Join(outputDir, baseName+"-DMIN-*.json")
+	pattern2 := filepath.Join(outputDir, baseName+"_Copy-DMIN-*.json")
+	pattern3 := filepath.Join(outputDir, baseName+"_copy.*-DMIN-*.json")
+
+	fmt.Printf("Searching for existing transcripts with patterns:\n")
+	fmt.Printf("  Pattern 1: %s\n", pattern1)
+	fmt.Printf("  Pattern 2: %s\n", pattern2)
+	fmt.Printf("  Pattern 3: %s\n", pattern3)
+
+	// Search for all patterns
+	matches1, err := filepath.Glob(pattern1)
+	if err != nil {
+		fmt.Printf("Error searching for existing transcripts (pattern 1): %v\n", err)
+	}
+
+	matches2, err := filepath.Glob(pattern2)
+	if err != nil {
+		fmt.Printf("Error searching for existing transcripts (pattern 2): %v\n", err)
+	}
+
+	matches3, err := filepath.Glob(pattern3)
+	if err != nil {
+		fmt.Printf("Error searching for existing transcripts (pattern 3): %v\n", err)
+	}
+
+	// Combine all matches
+	allMatches := append(matches1, matches2...)
+	allMatches = append(allMatches, matches3...)
+
+	// If we find matching files, try to read the most recent one
+	if len(allMatches) > 0 {
+		fmt.Printf("Found %d matching transcript files\n", len(allMatches))
+		// Sort by modification time to get the most recent
+		var latestFile string
+		var latestTime int64
+
+		for _, match := range allMatches {
+			info, err := os.Stat(match)
+			if err != nil {
+				continue
+			}
+			if info.ModTime().Unix() > latestTime {
+				latestTime = info.ModTime().Unix()
+				latestFile = match
+			}
+		}
+
+		if latestFile != "" {
+			fmt.Printf("Found existing transcript file: %s\n", latestFile)
+			// Try to read and parse the transcript
+			data, err := os.ReadFile(latestFile)
+			if err != nil {
+				fmt.Printf("Error reading existing transcript: %v\n", err)
+				return ""
+			}
+
+			// Parse the JSON to extract the transcript text
+			var transcriptResp struct {
+				Results struct {
+					Transcripts []struct {
+						Transcript string `json:"transcript"`
+					} `json:"transcripts"`
+				} `json:"results"`
+			}
+
+			if err := json.Unmarshal(data, &transcriptResp); err != nil {
+				fmt.Printf("Error parsing existing transcript JSON: %v\n", err)
+				return ""
+			}
+
+			if len(transcriptResp.Results.Transcripts) > 0 {
+				fmt.Printf("Successfully loaded existing transcript (%d characters)\n", len(transcriptResp.Results.Transcripts[0].Transcript))
+				return transcriptResp.Results.Transcripts[0].Transcript
+			}
+		}
+	}
+
+	fmt.Printf("No existing transcript found for %s\n", audioFilePath)
+	return ""
 }
 
 // showAboutDialog displays the About dialog
@@ -201,6 +254,11 @@ func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *
 	awsProfileEntry.SetText(config.AWSProfile)
 	awsProfileEntry.SetPlaceHolder("Enter AWS profile name (e.g., default)")
 
+	// Create output path entry
+	outputPathEntry := widget.NewEntry()
+	outputPathEntry.SetText(config.OutputPath)
+	outputPathEntry.SetPlaceHolder("Enter output file path (e.g., /path/to/result.txt)")
+
 	// Create output lines slider
 	outputLinesSlider := widget.NewSlider(5, 50)
 	outputLinesSlider.SetValue(float64(config.OutputLines))
@@ -214,6 +272,7 @@ func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *
 	// Create labels with descriptions
 	s3Label := widget.NewRichTextFromMarkdown("**S3 Bucket:**\nThe AWS S3 bucket where audio files will be stored or retrieved.")
 	awsLabel := widget.NewRichTextFromMarkdown("**AWS Profile:**\nThe AWS CLI profile to use for authentication.")
+	outputPathLabel := widget.NewRichTextFromMarkdown("**Output File Path:**\nThe path where the processing result will be saved.")
 	outputLabel := widget.NewRichTextFromMarkdown("**Output Display Lines:**\nMinimum number of lines to display in the output area (5-50).")
 
 	// Create form content
@@ -223,6 +282,9 @@ func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *
 		widget.NewSeparator(),
 		awsLabel,
 		awsProfileEntry,
+		widget.NewSeparator(),
+		outputPathLabel,
+		outputPathEntry,
 		widget.NewSeparator(),
 		outputLabel,
 		outputLinesLabel,
@@ -242,10 +304,16 @@ func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *
 				// Basic validation
 				s3Bucket := s3BucketEntry.Text
 				awsProfile := awsProfileEntry.Text
+				outputPath := outputPathEntry.Text
 				outputLines := int(outputLinesSlider.Value)
 
 				if awsProfile == "" {
 					awsProfile = "default"
+				}
+
+				// Validate output path
+				if outputPath == "" {
+					outputPath = filepath.Join(config.LastDirectory, "result.txt")
 				}
 
 				// Validate output lines
@@ -258,6 +326,7 @@ func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *
 				// Update configuration
 				config.S3Bucket = s3Bucket
 				config.AWSProfile = awsProfile
+				config.OutputPath = outputPath
 				config.OutputLines = outputLines
 
 				// Save configuration
@@ -269,12 +338,12 @@ func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *
 				}
 
 				// Show success message
-				successMsg := fmt.Sprintf("Configuration saved successfully!\n\nS3 Bucket: %s\nAWS Profile: %s\nOutput Lines: %d",
-					s3Bucket, awsProfile, outputLines)
+				successMsg := fmt.Sprintf("Configuration saved successfully!\n\nS3 Bucket: %s\nAWS Profile: %s\nOutput Path: %s\nOutput Lines: %d",
+					s3Bucket, awsProfile, outputPath, outputLines)
 				dialog.ShowInformation("Configuration Saved", successMsg, w)
 
-				fmt.Printf("Configuration updated - S3 Bucket: %s, AWS Profile: %s, Output Lines: %d\n",
-					config.S3Bucket, config.AWSProfile, config.OutputLines)
+				fmt.Printf("Configuration updated - S3 Bucket: %s, AWS Profile: %s, Output Path: %s, Output Lines: %d\n",
+					config.S3Bucket, config.AWSProfile, config.OutputPath, config.OutputLines)
 			}
 		},
 		w,
@@ -285,15 +354,22 @@ func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *
 }
 
 func main() {
+	//--------------------------------------------------------------
+	// Initialize application and window
+	//--------------------------------------------------------------
 	a := app.New()
 	w := a.NewWindow("Audio Note LLM")
 	w.Resize(fyne.NewSize(1400, 900)) // Increased size to fully show output and new tab layout
 
-	// Initialize configuration
+	//--------------------------------------------------------------
+	// Initialize configuration and context
+	//--------------------------------------------------------------
 	config := configuration.InitConfig()
 	ctx := context.Background()
 
-	// Create output text field for stdout capture (needed for menu configuration)
+	//--------------------------------------------------------------
+	// Create output field for stdout capture
+	//--------------------------------------------------------------
 	outputField := widget.NewMultiLineEntry()
 	// to not explode screen
 	maxlines := min(config.OutputLines, 20)
@@ -310,7 +386,9 @@ func main() {
 
 	// Note: Size will be set when creating the scroll container
 
-	// Create menu
+	//--------------------------------------------------------------
+	// Create application menu
+	//--------------------------------------------------------------
 	aboutMenu := fyne.NewMenu("Help",
 		fyne.NewMenuItem("About Audio Note LLM", func() {
 			showAboutDialog(w)
@@ -326,20 +404,24 @@ func main() {
 	mainMenu := fyne.NewMainMenu(configMenu, aboutMenu)
 	w.SetMainMenu(mainMenu)
 
-	// Load prompt files to populate action types
+	//--------------------------------------------------------------
+	// Load action types from prompt files
+	//--------------------------------------------------------------
 	actionTypes, err := configuration.LoadPromptFiles()
 	if err != nil {
 		fmt.Printf("Error loading prompt files: %v\n", err)
-		actionTypes = []string{"summary", "call to action", "criticize"} // fallback
+		actionTypes = []string{"blog", "paper", "requirements", "call-to-action"} // fallback
 	}
 
 	if len(actionTypes) == 0 {
-		actionTypes = []string{"summary", "call to action", "criticize"} // fallback
+		actionTypes = []string{"blog", "paper", "requirements", "call-to-action"} // fallback
 	}
 
 	fmt.Printf("Loaded action types: %v\n", actionTypes)
 
-	// Create editor field for prompt content
+	//--------------------------------------------------------------
+	// Create prompt editor and content loading function
+	//--------------------------------------------------------------
 	promptEditor := widget.NewMultiLineEntry()
 	promptEditor.Wrapping = fyne.TextWrapWord
 	promptEditor.SetPlaceHolder("Select an action type to load its prompt content...")
@@ -356,7 +438,9 @@ func main() {
 		}
 	}
 
-	// Create the select widgets
+	//--------------------------------------------------------------
+	// Create action type selector
+	//--------------------------------------------------------------
 	actionSelect := widget.NewSelect(
 		actionTypes,
 		func(value string) {
@@ -375,9 +459,9 @@ func main() {
 	actionSelect.SetSelected(defaultAction)
 	config.LastActionType = defaultAction
 
-	// Load initial prompt content
-	loadPromptContent(defaultAction)
-
+	//--------------------------------------------------------------
+	// Create language selector
+	//--------------------------------------------------------------
 	languageSelect := widget.NewSelect(
 		[]string{"en-US", "de-DE"},
 		func(value string) {
@@ -394,7 +478,9 @@ func main() {
 		config.LastLanguage = "en-US"
 	}
 
+	//--------------------------------------------------------------
 	// Create file selector for audio files
+	//--------------------------------------------------------------
 	var selectedFilePath string
 	var fileSelector *widget.Button
 	var directoryLabel *widget.Label
@@ -450,11 +536,77 @@ func main() {
 		dialog.Show()
 	})
 
+	//--------------------------------------------------------------
+	// Create output path selector
+	//--------------------------------------------------------------
+	var outputPathSelector *widget.Button
+	var outputDirectoryLabel *widget.Label
+	outputPathSelector = widget.NewButton("Select Output Path", func() {
+		// Store current directory to restore later
+		currentDir, _ := os.Getwd()
+		fmt.Printf("Current working directory: %s\n", currentDir)
+
+		// Set the directory for the dialog (use the directory of current output path if it exists)
+		outputDir := filepath.Dir(config.OutputPath)
+		if outputDir != "" && configuration.DirExists(outputDir) {
+			if err := os.Chdir(outputDir); err != nil {
+				fmt.Printf("Could not set output directory: %v\n", err)
+			}
+		}
+
+		dialog := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
+			// Always restore original directory first
+			configuration.RestoreDirectory(currentDir)
+
+			if err != nil {
+				fmt.Printf("Error selecting output file: %v\n", err)
+				return
+			}
+			if writer == nil {
+				return
+			}
+			defer writer.Close()
+
+			selectedPath := writer.URI().Path()
+			config.OutputPath = selectedPath
+			outputPathSelector.SetText(fmt.Sprintf("Selected: %s", filepath.Base(selectedPath)))
+			fmt.Printf("Output path selected: %s\n", selectedPath)
+
+			// Update output directory label
+			outputDirectoryLabel.SetText(fmt.Sprintf("Output Directory: %s", filepath.Dir(selectedPath)))
+			fmt.Printf("Updated output directory to: %s\n", filepath.Dir(selectedPath))
+		}, w)
+
+		// Set file filter for text files
+		dialog.SetFilter(storage.NewExtensionFileFilter([]string{".txt", ".md"}))
+
+		// Set default filename
+		dialog.SetFileName("result.txt")
+
+		// Also try to set location via URI (additional method)
+		if dirURI := config.GetDirectoryURI(); dirURI != nil {
+			// Try to cast to ListableURI for SetLocation
+			if listableURI, ok := dirURI.(fyne.ListableURI); ok {
+				dialog.SetLocation(listableURI)
+				fmt.Printf("Also set dialog URI location to: %s\n", config.LastDirectory)
+			} else {
+				fmt.Printf("URI is not listable, relying on directory change method\n")
+			}
+		}
+
+		fmt.Printf("Opening output file dialog (should start in: %s)\n", config.LastDirectory)
+		dialog.Show()
+	})
+
+	//--------------------------------------------------------------
 	// Create progress bar
+	//--------------------------------------------------------------
 	progressBar := widget.NewProgressBar()
 	progressBar.SetValue(0.0)
 
+	//--------------------------------------------------------------
 	// Set up stdout capture
+	//--------------------------------------------------------------
 	outputCapture, err := NewOutputCapture(outputField)
 	if err != nil {
 		fmt.Printf("Error setting up output capture: %v\n", err)
@@ -463,6 +615,39 @@ func main() {
 	// Add initial message to output
 	fmt.Println("Audio Note LLM started - output will be displayed here")
 
+	//--------------------------------------------------------------
+	// Create action management functions
+	//--------------------------------------------------------------
+	// Function to refresh action types from directory
+	refreshActionTypes := func() {
+		newActionTypes, err := configuration.LoadPromptFiles()
+		if err != nil {
+			fmt.Printf("Error loading prompt files: %v\n", err)
+			return
+		}
+
+		if len(newActionTypes) == 0 {
+			newActionTypes = []string{"blog", "paper", "requirements", "call-to-action"} // fallback
+		}
+
+		// Update the select widget options
+		actionSelect.Options = newActionTypes
+
+		// If current selection is no longer valid, select the first option
+		if !configuration.Contains(newActionTypes, actionSelect.Selected) {
+			if len(newActionTypes) > 0 {
+				actionSelect.SetSelected(newActionTypes[0])
+				config.LastActionType = newActionTypes[0]
+				loadPromptContent(newActionTypes[0])
+			}
+		}
+
+		fmt.Printf("Refreshed action types: %v\n", newActionTypes)
+	}
+
+	//--------------------------------------------------------------
+	// Create prompt management buttons
+	//--------------------------------------------------------------
 	// Create save button for prompt editor
 	savePromptButton := widget.NewButtonWithIcon("Save Prompt", theme.DocumentSaveIcon(), func() {
 		currentAction := actionSelect.Selected
@@ -482,11 +667,101 @@ func main() {
 		}
 	})
 
+	// Create refresh button for action types
+	refreshActionButton := widget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() {
+		refreshActionTypes()
+		dialog.ShowInformation("Refreshed", "Action types refreshed from directory", w)
+	})
+
+	// Create new action button
+	newActionButton := widget.NewButtonWithIcon("New Action", theme.ContentAddIcon(), func() {
+		// Create a simple dialog to get the new action name
+		actionNameEntry := widget.NewEntry()
+		actionNameEntry.SetPlaceHolder("Enter action name (e.g., summary, analysis, notes)")
+
+		// Validate action name (no spaces, only alphanumeric and hyphens)
+		actionNameEntry.OnChanged = func(text string) {
+			// Remove spaces and special characters
+			cleanText := strings.ReplaceAll(text, " ", "-")
+			cleanText = strings.ToLower(cleanText)
+			// Keep only alphanumeric and hyphens
+			var result strings.Builder
+			for _, char := range cleanText {
+				if (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-' {
+					result.WriteRune(char)
+				}
+			}
+			if result.String() != text {
+				actionNameEntry.SetText(result.String())
+			}
+		}
+
+		content := container.NewVBox(
+			widget.NewLabel("Create a new action type:"),
+			actionNameEntry,
+			widget.NewLabel("This will create a new prompt template file."),
+		)
+
+		confirmDialog := dialog.NewCustomConfirm(
+			"New Action",
+			"Create",
+			"Cancel",
+			content,
+			func(confirmed bool) {
+				if confirmed {
+					actionName := actionNameEntry.Text
+					if actionName == "" {
+						dialog.ShowError(fmt.Errorf("action name cannot be empty"), w)
+						return
+					}
+
+					// Create a default prompt template
+					defaultPrompt := fmt.Sprintf(`# %s Template
+
+Write your own prompt.
+The save the prompt before you want to use it.
+
+Please process the following audio transcript and create a %s:
+
+## Instructions:
+- Analyze the content thoroughly
+- Structure the output clearly
+- Provide actionable insights
+
+
+## %s:`, strings.Title(actionName), actionName, strings.Title(actionName))
+
+					// Save the new prompt
+					err := configuration.SavePromptContent(actionName, defaultPrompt)
+					if err != nil {
+						dialog.ShowError(fmt.Errorf("failed to create new action: %v", err), w)
+						fmt.Printf("Error creating new action %s: %v\n", actionName, err)
+					} else {
+						// Refresh the action types and select the new one
+						refreshActionTypes()
+						actionSelect.SetSelected(actionName)
+						config.LastActionType = actionName
+						loadPromptContent(actionName)
+
+						dialog.ShowInformation("Success", fmt.Sprintf("New action '%s' created successfully!", actionName), w)
+						fmt.Printf("Successfully created new action: %s\n", actionName)
+					}
+				}
+			},
+			w,
+		)
+
+		confirmDialog.Resize(fyne.NewSize(400, 200))
+		confirmDialog.Show()
+	})
+
 	// Prompt editor label
 	promptLabel := widget.NewLabel("Prompt Editor:")
 	promptLabel.TextStyle.Bold = true
 
-	// Create result text field for displaying result.txt content
+	//--------------------------------------------------------------
+	// Create result display field
+	//--------------------------------------------------------------
 	resultField := widget.NewMultiLineEntry()
 	//resultField.Disable() // Make it read-only
 	resultField.Wrapping = fyne.TextWrapWord
@@ -495,13 +770,15 @@ func main() {
 		Monospace: false, // Use regular font for results
 	}
 
-	// Load existing result.txt if it exists
-	if resultContent, err := os.ReadFile("result.txt"); err == nil {
+	// Load existing result file if it exists
+	if resultContent, err := os.ReadFile(config.OutputPath); err == nil {
 		resultField.SetText(string(resultContent))
-		fmt.Println("Loaded existing result.txt")
+		fmt.Printf("Loaded existing result from %s\n", config.OutputPath)
 	}
 
-	// Create the right side with AppTabs
+	//--------------------------------------------------------------
+	// Create right panel with tabs
+	//--------------------------------------------------------------
 	rightPanel := container.NewAppTabs(
 		// Left tab: Prompt Editor
 		container.NewTabItem("Prompt Editor",
@@ -537,6 +814,9 @@ func main() {
 		),
 	)
 
+	//--------------------------------------------------------------
+	// Create start button and processing logic
+	//--------------------------------------------------------------
 	// Create the start button with Material Design microphone icon
 	// Using emoji + built-in icon for better compatibility
 	var startButton *widget.Button
@@ -554,24 +834,51 @@ func main() {
 
 		fmt.Printf("Starting process with Action: %s, Language: %s, File: %s\n", action, language, selectedFilePath)
 
-		// *********************************************************
-		// * Start processing                                      *
-		// *********************************************************
+		//--------------------------------------------------------------
+		// Start processing
+		//--------------------------------------------------------------
 		go func() {
-			startButton.Disable()
-			progressBar.SetValue(float64(30) / 100.0)
-			fmt.Printf("Starting transcription with language: %s\n", language)
-			awsProfile := config.AWSProfile
-			err = translate.InitClient(ctx, awsProfile)
-			if err != nil {
-				progressBar.SetValue(float64(0.0))
-				fmt.Println("Could not load AWS profile: ", awsProfile)
-				startButton.Enable()
-				return
+			fyne.Do(func() {
+				startButton.Disable()
+				progressBar.SetValue(float64(10) / 100.0)
+			})
+
+			// Check if transcript already exists
+			fmt.Printf("Checking for existing transcript...\n")
+			existingTranscript := checkForExistingTranscript(selectedFilePath, config.S3Bucket, language)
+
+			var transcript string
+			if existingTranscript != "" {
+				fmt.Printf("Found existing transcript, skipping transcription process\n")
+				transcript = existingTranscript
+				fyne.Do(func() {
+					progressBar.SetValue(float64(50) / 100.0)
+				})
+			} else {
+				fmt.Printf("No existing transcript found, starting transcription with language: %s\n", language)
+				fyne.Do(func() {
+					progressBar.SetValue(float64(20) / 100.0)
+				})
+				awsProfile := config.AWSProfile
+				err = translate.InitClient(awsProfile)
+				if err != nil {
+					fyne.Do(func() {
+						progressBar.SetValue(float64(0.0))
+						fmt.Println("Could not load AWS profile: ", awsProfile)
+						startButton.Enable()
+					})
+					return
+				}
+				fyne.Do(func() {
+					progressBar.SetValue(float64(30) / 100.0)
+				})
+				transcript = translate.Translate(ctx, translate.Client, selectedFilePath, config.S3Bucket, language)
+				fyne.Do(func() {
+					progressBar.SetValue(float64(50) / 100.0)
+				})
+
 			}
-			transcript := translate.Translate(ctx, translate.Client, selectedFilePath, config.S3Bucket, language)
-			progressBar.SetValue(float64(60) / 100.0)
-			promptData, err := configuration.LoadPromptContent("blog")
+			promptData, err := configuration.LoadPromptContent(action)
 			if err != nil {
 				log.Fatalf("Error loading prompt: %v", err)
 			}
@@ -582,32 +889,42 @@ func main() {
 				log.Fatalf("Error calling Bedrock: %v", err)
 			}
 
-			err = os.WriteFile("result.txt", []byte(bedrockResult), 0644)
+			err = os.WriteFile(config.OutputPath, []byte(bedrockResult), 0644)
 			if err != nil {
-				log.Fatalf("Error writing result.txt: %v", err)
+				log.Fatalf("Error writing result to %s: %v", config.OutputPath, err)
 			}
-			fmt.Println("Done. Result written to result.txt")
+			fmt.Printf("Done. Result written to %s\n", config.OutputPath)
 
 			// Load result into the result tab
-			resultContent, err := os.ReadFile("result.txt")
+			resultContent, err := os.ReadFile(config.OutputPath)
 			if err != nil {
-				fmt.Printf("Error reading result.txt: %v\n", err)
-				resultField.SetText("Error loading result file")
+				fmt.Printf("Error reading result from %s: %v\n", config.OutputPath, err)
+				fyne.Do(func() {
+					resultField.SetText("Error loading result file")
+				})
 			} else {
-				resultField.SetText(string(resultContent))
-				fmt.Println("Result loaded into Result tab")
+				fyne.Do(func() {
+					resultField.SetText(string(resultContent))
+					fmt.Println("Result loaded into Result tab")
+				})
 			}
 
 			// Switch to the Result tab to show the result
-			rightPanel.SelectTab(rightPanel.Items[1]) // Switch to second tab (Result)
+			fyne.Do(func() {
+				rightPanel.SelectTab(rightPanel.Items[1]) // Switch to second tab (Result)
+			})
 
-			progressBar.SetValue(1.0)
-			fmt.Println("Process completed!")
-			startButton.Enable()
+			fyne.Do(func() {
+				progressBar.SetValue(1.0)
+				fmt.Println("Process completed!")
+				startButton.Enable()
+			})
 		}()
 	})
 
-	// Create form layout with labels
+	//--------------------------------------------------------------
+	// Create UI labels and buttons
+	//--------------------------------------------------------------
 	actionLabel := widget.NewLabel("Action Type:")
 	actionLabel.TextStyle.Bold = true
 
@@ -617,9 +934,16 @@ func main() {
 	fileLabel := widget.NewLabel("Audio File:")
 	fileLabel.TextStyle.Bold = true
 
-	// Directory display label
-	directoryLabel = widget.NewLabel(fmt.Sprintf("Directory: %s", config.LastDirectory))
+	// Output path label
+	outputPathLabel := widget.NewLabel("Output Path:")
+	outputPathLabel.TextStyle.Bold = true
+
+	// Directory display labels
+	directoryLabel = widget.NewLabel(fmt.Sprintf("Input Directory: %s", config.LastDirectory))
 	directoryLabel.TextStyle.Italic = true
+
+	outputDirectoryLabel = widget.NewLabel(fmt.Sprintf("Output Directory: %s", filepath.Dir(config.OutputPath)))
+	outputDirectoryLabel.TextStyle.Italic = true
 
 	progressLabel := widget.NewLabel("Progress:")
 	progressLabel.TextStyle.Bold = true
@@ -633,12 +957,18 @@ func main() {
 		fmt.Println("Output cleared")
 	})
 
-	// Create the left side configuration panel
+	//--------------------------------------------------------------
+	// Create left configuration panel
+	//--------------------------------------------------------------
 	leftPanel := container.NewVBox(
 		widget.NewCard("Configuration", "Select your audio note processing options",
 			container.NewVBox(
 				actionLabel,
-				actionSelect,
+				container.NewHBox(
+					actionSelect,
+					refreshActionButton,
+					newActionButton,
+				),
 				widget.NewSeparator(),
 				languageLabel,
 				languageSelect,
@@ -646,6 +976,10 @@ func main() {
 				fileLabel,
 				fileSelector,
 				directoryLabel,
+				widget.NewSeparator(),
+				outputPathLabel,
+				outputPathSelector,
+				outputDirectoryLabel,
 				widget.NewSeparator(),
 				// Start button moved here, under directory line
 				container.NewHBox(
@@ -677,15 +1011,19 @@ func main() {
 		),
 	)
 
-	// Create adaptive horizontal split with left and right panels
-	content := NewAdaptiveContainer(leftPanel, rightPanel, outputField, config)
+	//--------------------------------------------------------------
+	// Create main layout and set window content
+	//--------------------------------------------------------------
+	content := container.NewHSplit(leftPanel, rightPanel)
 
 	// Add some padding around the content
 	paddedContent := container.NewPadded(content)
 
 	w.SetContent(paddedContent)
 
-	// Set up window close handler
+	//--------------------------------------------------------------
+	// Set up window close handler and start application
+	//--------------------------------------------------------------
 	w.SetOnClosed(func() {
 		// Restore original stdout
 		if outputCapture != nil {

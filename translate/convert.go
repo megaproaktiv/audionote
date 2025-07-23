@@ -74,5 +74,5 @@ func CopyFileToValidName(src string) (string, error) {
 		return "", err
 	}
 
-	return newName, nil
+	return dst, nil
 }

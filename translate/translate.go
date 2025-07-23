@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/aws-sdk-go-v2/service/transcribe"
@@ -59,6 +60,13 @@ func Translate(ctx context.Context, client *transcribe.Client, inputFile string,
 	transcript, err := GetTranscriptText(jobName, bucket)
 	if err != nil {
 		log.Fatalf("Error getting transcript text: %v", err)
+	}
+
+	// Clean up the copied file
+	if err := os.Remove(mp3File); err != nil {
+		log.Printf("Warning: Could not remove temporary file %s: %v", mp3File, err)
+	} else {
+		fmt.Printf("Cleaned up temporary file: %s", mp3File)
 	}
 
 	return transcript
