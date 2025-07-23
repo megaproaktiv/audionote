@@ -553,49 +553,19 @@ func main() {
 				fmt.Printf("Could not set output directory: %v\n", err)
 			}
 		}
+		panel := appPanel.Panel{
+			CurrentDir:           currentDir,
+			OutputPathSelector:   outputPathSelector,
+			OutputDirectoryLabel: outputDirectoryLabel,
+		}
+		_, err := appPanel.SelectButton(
+			&panel, config)
 
-		dialog := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
-			// Always restore original directory first
-			configuration.RestoreDirectory(currentDir)
-
-			if err != nil {
-				fmt.Printf("Error selecting output file: %v\n", err)
-				return
-			}
-			if writer == nil {
-				return
-			}
-			defer writer.Close()
-
-			selectedPath := writer.URI().Path()
-			config.OutputPath = selectedPath
-			outputPathSelector.SetText(fmt.Sprintf("Selected: %s", filepath.Base(selectedPath)))
-			fmt.Printf("Output path selected: %s\n", selectedPath)
-
-			// Update output directory label
-			outputDirectoryLabel.SetText(fmt.Sprintf("Output Directory: %s", filepath.Dir(selectedPath)))
-			fmt.Printf("Updated output directory to: %s\n", filepath.Dir(selectedPath))
-		}, w)
-
-		// Set file filter for text files
-		dialog.SetFilter(storage.NewExtensionFileFilter([]string{".txt", ".md"}))
-
-		// Set default filename
-		dialog.SetFileName("result.txt")
-
-		// Also try to set location via URI (additional method)
-		if dirURI := config.GetDirectoryURI(); dirURI != nil {
-			// Try to cast to ListableURI for SetLocation
-			if listableURI, ok := dirURI.(fyne.ListableURI); ok {
-				dialog.SetLocation(listableURI)
-				fmt.Printf("Also set dialog URI location to: %s\n", config.LastDirectory)
-			} else {
-				fmt.Printf("URI is not listable, relying on directory change method\n")
-			}
+		if err != nil {
+			fmt.Printf("Error opening file dialog: %v\n", err)
+			return
 		}
 
-		fmt.Printf("Opening output file dialog (should start in: %s)\n", config.LastDirectory)
-		dialog.Show()
 	})
 
 	//--------------------------------------------------------------
@@ -787,41 +757,6 @@ Please process the following audio transcript and create a %s:
 			SavePromptButton: savePromptButton,
 		},
 	)
-
-	// container.NewAppTabs(
-	// 	// Left tab: Prompt Editor
-	// 	container.NewTabItem("Prompt Editor",
-	// 		container.NewBorder(
-	// 			// Top: Just the label
-	// 			container.NewPadded(promptLabel),
-	// 			// Bottom: Centered save button
-	// 			container.NewPadded(
-	// 				container.NewHBox(
-	// 					layout.NewSpacer(),
-	//	 					savePromptButton,
-	// 					layout.NewSpacer(),
-	// 				),
-	// 			),
-	// 			// Left, Right: nil
-	// 			nil, nil,
-	// 			// Center: Maximized scrollable editor
-	// 			container.NewScroll(promptEditor),
-	// 		),
-	// 	),
-	// 	// Right tab: Result
-	// 	container.NewTabItem("Result",
-	// 		container.NewBorder(
-	// 			// Top: Result label
-	// 			container.NewPadded(widget.NewLabel("Processing Result")),
-	// 			// Bottom: nil
-	// 			nil,
-	// 			// Left, Right: nil
-	// 			nil, nil,
-	// 			// Center: Scrollable result field
-	// 			container.NewScroll(resultField),
-	// 		),
-	// 	),
-	// )
 
 	//--------------------------------------------------------------
 	// Create start button and processing logic
