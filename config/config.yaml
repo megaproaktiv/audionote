@@ -1,7 +1,0 @@
-aws_profile: genai
-last_action_type: paper
-last_directory: /Users/leonvaness/Desktop
-last_language: en-US
-output_lines: 10
-output_path: /Users/leonvaness/Desktop/result.txt
-s3_bucket: audionote-lvaness
