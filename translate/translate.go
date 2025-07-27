@@ -6,17 +6,43 @@ import (
 	"log"
 	"os"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/aws-sdk-go-v2/service/transcribe"
-
-	"github.com/aws/aws-sdk-go-v2/config"
 )
 
 var Client *transcribe.Client
 
 func InitClient(ctx context.Context, profile string) error {
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithSharedConfigProfile(profile))
+	var cfg aws.Config
+	var err error
+
+	// Check for AWS environment variables
+	accessKeyID := os.Getenv("AWS_ACCESS_KEY_ID")
+	secretAccessKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+	sessionToken := os.Getenv("AWS_SESSION_TOKEN")
+
+	if accessKeyID != "" && secretAccessKey != "" {
+		// Use environment variables for credentials
+		if sessionToken != "" {
+			// All three environment variables are present
+			cfg, err = config.LoadDefaultConfig(ctx,
+				config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+					accessKeyID, secretAccessKey, sessionToken)))
+		} else {
+			// Only access key and secret key are present
+			cfg, err = config.LoadDefaultConfig(ctx,
+				config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+					accessKeyID, secretAccessKey, "")))
+		}
+	} else {
+		// Fall back to profile-based configuration
+		cfg, err = config.LoadDefaultConfig(ctx,
+			config.WithSharedConfigProfile(profile))
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to load AWS config: %w", err)
 	}
