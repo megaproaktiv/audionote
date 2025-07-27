@@ -373,7 +373,9 @@ func main() {
 		// Also try to set location via URI (additional method)
 		if dirURI := config.GetDirectoryURI(); dirURI != nil {
 			// Try to cast to ListableURI for SetLocation
-			if listableURI, ok := dirURI.(fyne.ListableURI); ok {
+			fmt.Printf("Dir Uri:%v\n", dirURI)
+			listableURI, err := storage.ListerForURI(dirURI)
+			if err == nil {
 				dialog.SetLocation(listableURI)
 				fmt.Printf("Also set dialog URI location to: %s\n", config.LastDirectory)
 			} else {
