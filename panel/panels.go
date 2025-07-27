@@ -12,6 +12,7 @@ type Panel struct {
 	PromptEditor         *widget.Entry
 	ResultField          *widget.Entry
 	SavePromptButton     *widget.Button
+	CopyResultButton     *widget.Button
 	OutputField          *widget.Entry
 	OutputPathSelector   *widget.Button
 	OutputDirectoryLabel *widget.Label

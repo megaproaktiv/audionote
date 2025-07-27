@@ -594,6 +594,19 @@ Please process the following audio transcript and create a %s:
 		fmt.Printf("Loaded existing result from %s\n", config.OutputPath)
 	}
 
+	// Create copy button for result field
+	copyResultButton := widget.NewButtonWithIcon("Copy Result", theme.ContentCopyIcon(), func() {
+		content := resultField.Text
+		if content == "" {
+			dialog.ShowInformation("Info", "No result to copy", w)
+			return
+		}
+
+		clipboard := fyne.CurrentApp().Driver().AllWindows()[0].Clipboard()
+		clipboard.SetContent(content)
+		fmt.Printf("Result copied to clipboard\n")
+	})
+
 	//--------------------------------------------------------------
 	// Create right panel with tabs
 	//--------------------------------------------------------------
@@ -601,6 +614,7 @@ Please process the following audio transcript and create a %s:
 	p.PromptEditor = promptEditor
 	p.ResultField = resultField
 	p.SavePromptButton = savePromptButton
+	p.CopyResultButton = copyResultButton
 	rightPanel := p.RightPanel()
 
 	//--------------------------------------------------------------

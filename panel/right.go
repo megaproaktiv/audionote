@@ -32,8 +32,14 @@ func (p *Panel) RightPanel() *container.AppTabs {
 			container.NewBorder(
 				// Top: Result label
 				container.NewPadded(widget.NewLabel("Processing Result")),
-				// Bottom: nil
-				nil,
+				// Bottom: Centered copy button
+				container.NewPadded(
+					container.NewHBox(
+						layout.NewSpacer(),
+						p.CopyResultButton,
+						layout.NewSpacer(),
+					),
+				),
 				// Left, Right: nil
 				nil, nil,
 				// Center: Scrollable result field
