@@ -20,6 +20,7 @@ type Config struct {
 	LastDirectory  string `mapstructure:"last_directory"`
 	S3Bucket       string `mapstructure:"s3_bucket"`
 	AWSProfile     string `mapstructure:"aws_profile"`
+	Model          string `mapstructure:"model"`
 	OutputLines    int    `mapstructure:"output_lines"`
 	OutputPath     string `mapstructure:"output_path"`
 }
@@ -65,6 +66,7 @@ func InitConfig() *Config {
 	viper.SetDefault("last_directory", documentsDir)
 	viper.SetDefault("s3_bucket", "")
 	viper.SetDefault("aws_profile", "default")
+	viper.SetDefault("model", "anthropic.claude-3-5-sonnet-20240620-v1:0")
 	viper.SetDefault("output_lines", 10)
 	viper.SetDefault("output_path", filepath.Join(documentsDir, "result.txt"))
 
@@ -105,6 +107,7 @@ func (c *Config) Save() {
 	viper.Set("last_directory", c.LastDirectory)
 	viper.Set("s3_bucket", c.S3Bucket)
 	viper.Set("aws_profile", c.AWSProfile)
+	viper.Set("model", c.Model)
 	viper.Set("output_lines", c.OutputLines)
 	viper.Set("output_path", c.OutputPath)
 

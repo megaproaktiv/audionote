@@ -11,10 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
 )
 
-const model = "anthropic.claude-3-5-sonnet-20240620-v1:0"
-
-func CallBedrock(prompt string) (string, error) {
-	fmt.Printf("Calling Bedrock model 'anthropic.claude-3-5-sonnet-20240620-v1:0'...\n")
+func CallBedrock(prompt string, model string) (string, error) {
+	fmt.Printf("Calling Bedrock model '%s'...\n", model)
 	// This simulates an API call to Bedrock.
 	input := "Processed result from Bedrock with prompt: " + prompt
 	cfg, err := config.LoadDefaultConfig(context.TODO())
@@ -24,7 +22,7 @@ func CallBedrock(prompt string) (string, error) {
 	}
 	client := bedrockruntime.NewFromConfig(cfg)
 	ctx := context.TODO()
-	result, err := Converse(ctx, client, input)
+	result, err := Converse(ctx, client, input, model)
 	if err != nil {
 		return "", err
 	}
@@ -32,7 +30,7 @@ func CallBedrock(prompt string) (string, error) {
 }
 
 // Plain Converse
-func Converse(ctx context.Context, client *bedrockruntime.Client, input string) (string, error) {
+func Converse(ctx context.Context, client *bedrockruntime.Client, input string, model string) (string, error) {
 
 	converseInput := &bedrockruntime.ConverseInput{
 		ModelId: aws.String(model),

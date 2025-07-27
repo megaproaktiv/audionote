@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [v0.2.0]
+
 ### Added
+- Copy Result Button for resulttext
+- when called from CLI, first AWS environment variables are user for credentials
+- Bedrock model is configurable from dialog
 
 ### Changed
 - refactor: panels in own package
@@ -21,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- WIP: open load Dialog with saves directory
+- open load Dialog now uses saved directory
 
 ## [v0.1.0]
 

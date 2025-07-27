@@ -27,6 +27,11 @@ func (p *Panel) ShowConfigDialog(config *configuration.Config) {
 	awsProfileEntry.SetText(config.AWSProfile)
 	awsProfileEntry.SetPlaceHolder("Enter AWS profile name (e.g., default)")
 
+	// Create model entry
+	modelEntry := widget.NewEntry()
+	modelEntry.SetText(config.Model)
+	modelEntry.SetPlaceHolder("Enter Bedrock model ID (e.g., anthropic.claude-3-5-sonnet-20240620-v1:0)")
+
 	// Create output path entry
 	outputPathEntry := widget.NewEntry()
 	outputPathEntry.SetText(config.OutputPath)
@@ -45,6 +50,7 @@ func (p *Panel) ShowConfigDialog(config *configuration.Config) {
 	// Create labels with descriptions
 	s3Label := widget.NewRichTextFromMarkdown("**S3 Bucket:**\nThe AWS S3 bucket where audio files will be stored or retrieved.")
 	awsLabel := widget.NewRichTextFromMarkdown("**AWS Profile:**\nThe AWS CLI profile to use for authentication.")
+	modelLabel := widget.NewRichTextFromMarkdown("**Bedrock Model:**\nThe AWS Bedrock model ID to use for processing (e.g., anthropic.claude-3-5-sonnet-20240620-v1:0).")
 	outputPathLabel := widget.NewRichTextFromMarkdown("**Output File Path:**\nThe path where the processing result will be saved.")
 	outputLabel := widget.NewRichTextFromMarkdown("**Output Display Lines:**\nMinimum number of lines to display in the output area (5-50).")
 
@@ -55,6 +61,9 @@ func (p *Panel) ShowConfigDialog(config *configuration.Config) {
 		widget.NewSeparator(),
 		awsLabel,
 		awsProfileEntry,
+		widget.NewSeparator(),
+		modelLabel,
+		modelEntry,
 		widget.NewSeparator(),
 		outputPathLabel,
 		outputPathEntry,
@@ -77,11 +86,16 @@ func (p *Panel) ShowConfigDialog(config *configuration.Config) {
 				// Basic validation
 				s3Bucket := s3BucketEntry.Text
 				awsProfile := awsProfileEntry.Text
+				model := modelEntry.Text
 				outputPath := outputPathEntry.Text
 				outputLines := int(outputLinesSlider.Value)
 
 				if awsProfile == "" {
 					awsProfile = "default"
+				}
+
+				if model == "" {
+					model = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 				}
 
 				// Validate output path
@@ -99,6 +113,7 @@ func (p *Panel) ShowConfigDialog(config *configuration.Config) {
 				// Update configuration
 				config.S3Bucket = s3Bucket
 				config.AWSProfile = awsProfile
+				config.Model = model
 				config.OutputPath = outputPath
 				config.OutputLines = outputLines
 
@@ -112,17 +127,17 @@ func (p *Panel) ShowConfigDialog(config *configuration.Config) {
 				}
 
 				// Show success message
-				successMsg := fmt.Sprintf("Configuration saved successfully!\n\nS3 Bucket: %s\nAWS Profile: %s\nOutput Path: %s\nOutput Lines: %d",
-					s3Bucket, awsProfile, outputPath, outputLines)
+				successMsg := fmt.Sprintf("Configuration saved successfully!\n\nS3 Bucket: %s\nAWS Profile: %s\nModel: %s\nOutput Path: %s\nOutput Lines: %d",
+					s3Bucket, awsProfile, model, outputPath, outputLines)
 				dialog.ShowInformation("Configuration Saved", successMsg, *w)
 
-				fmt.Printf("Configuration updated - S3 Bucket: %s, AWS Profile: %s, Output Path: %s, Output Lines: %d\n",
-					config.S3Bucket, config.AWSProfile, config.OutputPath, config.OutputLines)
+				fmt.Printf("Configuration updated - S3 Bucket: %s, AWS Profile: %s, Model: %s, Output Path: %s, Output Lines: %d\n",
+					config.S3Bucket, config.AWSProfile, config.Model, config.OutputPath, config.OutputLines)
 			}
 		},
 		*w,
 	)
 
-	configDialog.Resize(fyne.NewSize(500, 450))
+	configDialog.Resize(fyne.NewSize(500, 500))
 	configDialog.Show()
 }
