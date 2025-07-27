@@ -10,24 +10,35 @@ func (panel *Panel) ShowAboutDialog() {
 	w := panel.Window
 	aboutContent := widget.NewRichTextFromMarkdown(`# Audio Note LLM
 
-A desktop application for configuring and processing audio notes using Large Language Models.
+A desktop application for  processing audio notes using Large Language Models.
 
 ## Features
-• **Audio File Support**: Process MP3 and M4A files
-• **AI Processing Actions**: Choose from various processing templates
-• **Prompt Editor**: Edit and customize AI prompt templates
-• **Language Support**: Multiple language configurations
-• **AWS Integration**: S3 bucket and profile configuration
-• **Persistent Settings**: Automatic saving of user preferences
+- **Audio File Support**: Process MP3 and M4A files
+- **AI Processing Actions**: Choose from various processing templates
+- **Prompt Editor**: Edit and customize AI prompt templates
+- **Language Support**: Multiple language configurations
+- **AWS Integration**: S3 bucket and profile configuration
+- **Persistent Settings**: Automatic saving of user preferences
+
+## Setup
+- Create S3 Bucket
+- Set Bedrock Modell access
+- configure s3 bucket and model in configuration dialog
+
+## Run
+
+- Choose Action prompt
+- Set output directory
+- choose mp3 or mp4 audio file
 
 ## Technical Details
-• Built with **Go** programming language
-• UI framework: **Fyne v2**
-• Configuration: **Viper** with YAML storage
-• Cross-platform compatibility
+- Built with **Go** programming language
+- UI framework: **Fyne v2**
+- Configuration: **Viper** with YAML storage
+- Cross-platform compatibility
 
 ## Version
-**1.0.0** - Initial Release
+**0.2.0** - Working realease
 
 ---
 *Built with ❤️ for efficient audio note processing*`)

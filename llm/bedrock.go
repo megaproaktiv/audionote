@@ -6,22 +6,24 @@ import (
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
+	awsutil "github.com/megaproaktiv/audionote-config/aws"
 )
 
-func CallBedrock(prompt string, model string) (string, error) {
+func CallBedrock(prompt string, model string, awsProfile string) (string, error) {
 	fmt.Printf("Calling Bedrock model '%s'...\n", model)
 	// This simulates an API call to Bedrock.
 	input := "Processed result from Bedrock with prompt: " + prompt
-	cfg, err := config.LoadDefaultConfig(context.TODO())
-	if err != nil {
-		fmt.Println("configuration error, " + err.Error())
-		os.Exit(1)
-	}
-	client := bedrockruntime.NewFromConfig(cfg)
+	
 	ctx := context.TODO()
+	cfg, err := awsutil.LoadAndValidateAWSConfig(ctx, awsProfile)
+	if err != nil {
+		fmt.Printf("AWS configuration error: %v\n", err)
+		return "", fmt.Errorf("AWS configuration error: %w", err)
+	}
+	
+	client := bedrockruntime.NewFromConfig(cfg)
 	result, err := Converse(ctx, client, input, model)
 	if err != nil {
 		return "", err

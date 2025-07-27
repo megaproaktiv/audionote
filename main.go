@@ -687,7 +687,7 @@ Please process the following audio transcript and create a %s:
 			}
 			fullPrompt := string(promptData) + "\n" + transcript
 
-			bedrockResult, err := llm.CallBedrock(fullPrompt, config.Model)
+			bedrockResult, err := llm.CallBedrock(fullPrompt, config.Model, config.AWSProfile)
 			if err != nil {
 				log.Fatalf("Error calling Bedrock: %v", err)
 			}

@@ -1,15 +1,74 @@
 package panel
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	awsutil "github.com/megaproaktiv/audionote-config/aws"
 	"github.com/megaproaktiv/audionote-config/configuration"
 )
+
+// validateS3Bucket checks if the S3 bucket exists and returns its region
+func validateS3Bucket(bucketName, awsProfile string) (bool, string, string, error) {
+	if bucketName == "" {
+		return false, "", "Bucket name is empty", fmt.Errorf("bucket name is empty")
+	}
+
+	// Load AWS config using the common utility
+	ctx := context.Background()
+	cfg, err := awsutil.LoadAndValidateAWSConfig(ctx, awsProfile)
+	if err != nil {
+		return false, "", fmt.Sprintf("Failed to load/validate AWS config: %v", err), err
+	}
+
+	// Create S3 client
+	s3Client := s3.NewFromConfig(cfg)
+
+	// Check if bucket exists by trying to get its location
+	locationOutput, err := s3Client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+		Bucket: aws.String(bucketName),
+	})
+
+	if err != nil {
+		if strings.Contains(err.Error(), "NoSuchBucket") {
+			return false, "", fmt.Sprintf("Bucket '%s' does not exist", bucketName), err
+		}
+		if strings.Contains(err.Error(), "AccessDenied") {
+			return false, "", fmt.Sprintf("Access denied to bucket '%s'. Check your AWS credentials and permissions.", bucketName), err
+		}
+		return false, "", fmt.Sprintf("Error checking bucket '%s': %v", bucketName, err), err
+	}
+
+	// Get bucket region
+	bucketRegion := "us-east-1" // Default region for GetBucketLocation
+	if locationOutput.LocationConstraint != "" {
+		bucketRegion = string(locationOutput.LocationConstraint)
+	}
+
+	// Get current AWS config region
+	currentRegion := cfg.Region
+
+	// Check if regions match
+	regionMatch := bucketRegion == currentRegion
+	var regionMessage string
+	if regionMatch {
+		regionMessage = fmt.Sprintf("✓ Bucket region (%s) matches current AWS region", bucketRegion)
+	} else {
+		regionMessage = fmt.Sprintf("⚠ Bucket region (%s) differs from current AWS region (%s)", bucketRegion, currentRegion)
+	}
+
+	successMessage := fmt.Sprintf("✓ Bucket '%s' exists and is accessible\n%s", bucketName, regionMessage)
+	return true, bucketRegion, successMessage, nil
+}
 
 // showConfigDialog displays the configuration dialog
 
@@ -26,6 +85,66 @@ func (p *Panel) ShowConfigDialog(config *configuration.Config) {
 	awsProfileEntry := widget.NewEntry()
 	awsProfileEntry.SetText(config.AWSProfile)
 	awsProfileEntry.SetPlaceHolder("Enter AWS profile name (e.g., default)")
+
+	// Create S3 bucket check button
+	s3CheckButton := widget.NewButtonWithIcon("Check", theme.ConfirmIcon(), nil)
+	s3CheckButton.OnTapped = func() {
+		bucketName := strings.TrimSpace(s3BucketEntry.Text)
+		awsProfile := strings.TrimSpace(awsProfileEntry.Text)
+		if awsProfile == "" {
+			awsProfile = "default"
+		}
+
+		// Change button text to indicate checking
+		s3CheckButton.SetText("Checking...")
+		s3CheckButton.Disable()
+
+		// Perform validation in a goroutine to avoid blocking UI
+		go func() {
+			exists, region, message, err := validateS3Bucket(bucketName, awsProfile)
+
+			// Update UI on main thread
+			s3CheckButton.SetText("Check")
+			s3CheckButton.Enable()
+
+			var dialogTitle string
+			var dialogIcon fyne.Resource
+
+			if exists {
+				dialogTitle = "S3 Bucket Validation - Success"
+				dialogIcon = theme.ConfirmIcon()
+			} else {
+				dialogTitle = "S3 Bucket Validation - Error"
+				dialogIcon = theme.ErrorIcon()
+			}
+
+			// Show result dialog
+			resultDialog := dialog.NewCustom(
+				dialogTitle,
+				"OK",
+				container.NewVBox(
+					container.NewHBox(
+						widget.NewIcon(dialogIcon),
+						widget.NewLabel(dialogTitle),
+					),
+					widget.NewSeparator(),
+					widget.NewRichTextFromMarkdown(fmt.Sprintf("**Bucket:** %s\n**AWS Profile:** %s\n\n%s", bucketName, awsProfile, message)),
+				),
+				*w,
+			)
+			resultDialog.Resize(fyne.NewSize(400, 200))
+			resultDialog.Show()
+
+			if err != nil {
+				fmt.Printf("S3 bucket validation error: %v\n", err)
+			} else {
+				fmt.Printf("S3 bucket validation success: %s in region %s\n", bucketName, region)
+			}
+		}()
+	}
+
+	// Create S3 bucket container with entry and check button
+	s3BucketContainer := container.NewBorder(nil, nil, nil, s3CheckButton, s3BucketEntry)
 
 	// Create model entry
 	modelEntry := widget.NewEntry()
@@ -57,7 +176,7 @@ func (p *Panel) ShowConfigDialog(config *configuration.Config) {
 	// Create form content
 	formContent := container.NewVBox(
 		s3Label,
-		s3BucketEntry,
+		s3BucketContainer,
 		widget.NewSeparator(),
 		awsLabel,
 		awsProfileEntry,
