@@ -108,20 +108,6 @@ func (oc *OutputCapture) Close() {
 	oc.pipeReader.Close()
 }
 
-// updateOutputFieldSize updates the output field size based on configuration
-func updateOutputFieldSize(outputField *widget.Entry, config *configuration.Config) {
-	// Calculate height based on configured output lines (increased per-line height and padding)
-	outputHeight := float32(config.OutputLines*22 + 50)
-	if outputHeight < 220 { // Minimum height
-		outputHeight = 220
-	}
-	if outputHeight > 400 { // Maximum height for reasonable display
-		outputHeight = 400
-	}
-	outputField.Resize(fyne.NewSize(450, outputHeight))
-	fmt.Printf("Output field resized for %d lines (height: %.0f)\n", config.OutputLines, outputHeight)
-}
-
 // checkForExistingTranscript checks if a transcript already exists for the given audio file
 func checkForExistingTranscript(audioFilePath, bucket, language string) string {
 	// Generate the expected job name based on the audio file
@@ -215,118 +201,6 @@ func checkForExistingTranscript(audioFilePath, bucket, language string) string {
 	return ""
 }
 
-// showAboutDialog displays the About dialog
-
-// showConfigDialog displays the configuration dialog
-func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *widget.Entry) {
-	// Create entry widgets for configuration
-	s3BucketEntry := widget.NewEntry()
-	s3BucketEntry.SetText(config.S3Bucket)
-	s3BucketEntry.SetPlaceHolder("Enter S3 bucket name (e.g., my-audio-bucket)")
-
-	awsProfileEntry := widget.NewEntry()
-	awsProfileEntry.SetText(config.AWSProfile)
-	awsProfileEntry.SetPlaceHolder("Enter AWS profile name (e.g., default)")
-
-	// Create output path entry
-	outputPathEntry := widget.NewEntry()
-	outputPathEntry.SetText(config.OutputPath)
-	outputPathEntry.SetPlaceHolder("Enter output file path (e.g., /path/to/result.txt)")
-
-	// Create output lines slider
-	outputLinesSlider := widget.NewSlider(5, 50)
-	outputLinesSlider.SetValue(float64(config.OutputLines))
-	outputLinesSlider.Step = 1
-
-	outputLinesLabel := widget.NewLabel(fmt.Sprintf("Output Lines: %d", config.OutputLines))
-	outputLinesSlider.OnChanged = func(value float64) {
-		outputLinesLabel.SetText(fmt.Sprintf("Output Lines: %d", int(value)))
-	}
-
-	// Create labels with descriptions
-	s3Label := widget.NewRichTextFromMarkdown("**S3 Bucket:**\nThe AWS S3 bucket where audio files will be stored or retrieved.")
-	awsLabel := widget.NewRichTextFromMarkdown("**AWS Profile:**\nThe AWS CLI profile to use for authentication.")
-	outputPathLabel := widget.NewRichTextFromMarkdown("**Output File Path:**\nThe path where the processing result will be saved.")
-	outputLabel := widget.NewRichTextFromMarkdown("**Output Display Lines:**\nMinimum number of lines to display in the output area (5-50).")
-
-	// Create form content
-	formContent := container.NewVBox(
-		s3Label,
-		s3BucketEntry,
-		widget.NewSeparator(),
-		awsLabel,
-		awsProfileEntry,
-		widget.NewSeparator(),
-		outputPathLabel,
-		outputPathEntry,
-		widget.NewSeparator(),
-		outputLabel,
-		outputLinesLabel,
-		outputLinesSlider,
-		widget.NewSeparator(),
-		widget.NewLabel("Note: Make sure your AWS credentials are properly configured."),
-	)
-
-	// Create dialog
-	configDialog := dialog.NewCustomConfirm(
-		"Configuration Settings",
-		"Save",
-		"Cancel",
-		formContent,
-		func(confirmed bool) {
-			if confirmed {
-				// Basic validation
-				s3Bucket := s3BucketEntry.Text
-				awsProfile := awsProfileEntry.Text
-				outputPath := outputPathEntry.Text
-				outputLines := int(outputLinesSlider.Value)
-
-				if awsProfile == "" {
-					awsProfile = "default"
-				}
-
-				// Validate output path
-				if outputPath == "" {
-					outputPath = filepath.Join(config.LastDirectory, "result.txt")
-				}
-
-				// Validate output lines
-				if outputLines < 5 {
-					outputLines = 5
-				} else if outputLines > 50 {
-					outputLines = 50
-				}
-
-				// Update configuration
-				config.S3Bucket = s3Bucket
-				config.AWSProfile = awsProfile
-				config.OutputPath = outputPath
-				config.OutputLines = outputLines
-
-				// Save configuration
-				config.Save()
-
-				// Update output field size if it changed
-				if outputField != nil {
-					updateOutputFieldSize(outputField, config)
-				}
-
-				// Show success message
-				successMsg := fmt.Sprintf("Configuration saved successfully!\n\nS3 Bucket: %s\nAWS Profile: %s\nOutput Path: %s\nOutput Lines: %d",
-					s3Bucket, awsProfile, outputPath, outputLines)
-				dialog.ShowInformation("Configuration Saved", successMsg, w)
-
-				fmt.Printf("Configuration updated - S3 Bucket: %s, AWS Profile: %s, Output Path: %s, Output Lines: %d\n",
-					config.S3Bucket, config.AWSProfile, config.OutputPath, config.OutputLines)
-			}
-		},
-		w,
-	)
-
-	configDialog.Resize(fyne.NewSize(500, 450))
-	configDialog.Show()
-}
-
 func main() {
 	//--------------------------------------------------------------
 	// Initialize application and window
@@ -373,7 +247,11 @@ func main() {
 
 	configMenu := fyne.NewMenu("Settings",
 		fyne.NewMenuItem("Configuration...", func() {
-			showConfigDialog(w, config, outputField)
+			parms := panel.Panel{
+				Window:      &w,
+				OutputField: outputField,
+			}
+			panel.ShowConfigDialog(config, parms)
 		}),
 	)
 
