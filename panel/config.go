@@ -13,10 +13,10 @@ import (
 
 // showConfigDialog displays the configuration dialog
 
-func ShowConfigDialog(config *configuration.Config, myPanel Panel) {
+func (p *Panel) ShowConfigDialog(config *configuration.Config) {
 
-	outputField := myPanel.OutputField
-	w := myPanel.Window
+	outputField := p.OutputField
+	w := p.Window
 
 	// Create entry widgets for configuration
 	s3BucketEntry := widget.NewEntry()
@@ -107,10 +107,8 @@ func ShowConfigDialog(config *configuration.Config, myPanel Panel) {
 
 				// Update output field size if it changed
 				if outputField != nil {
-					parms := Panel{
-						OutputField: outputField,
-					}
-					UpdateOutputFieldSize(parms, config)
+					p.OutputField = outputField
+					p.UpdateOutputFieldSize(config)
 				}
 
 				// Show success message

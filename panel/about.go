@@ -1,13 +1,12 @@
-package info
+package panel
 
 import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
-	"github.com/megaproaktiv/audionote-config/panel"
 )
 
-func ShowAboutDialog(panel panel.Panel) {
+func (panel *Panel) ShowAboutDialog() {
 	w := panel.Window
 	aboutContent := widget.NewRichTextFromMarkdown(`# Audio Note LLM
 

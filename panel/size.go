@@ -8,7 +8,7 @@ import (
 )
 
 // updateOutputFieldSize updates the output field size based on configuration
-func UpdateOutputFieldSize(p Panel, config *configuration.Config) {
+func (p *Panel) UpdateOutputFieldSize(config *configuration.Config) {
 	outputField := p.OutputField
 	// Calculate height based on configured output lines (increased per-line height and padding)
 	outputHeight := float32(config.OutputLines*22 + 50)

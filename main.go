@@ -21,10 +21,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/megaproaktiv/audionote-config/configuration"
-	"github.com/megaproaktiv/audionote-config/info"
 	"github.com/megaproaktiv/audionote-config/llm"
 	"github.com/megaproaktiv/audionote-config/panel"
-	appPanel "github.com/megaproaktiv/audionote-config/panel"
 	"github.com/megaproaktiv/audionote-config/translate"
 )
 
@@ -209,6 +207,9 @@ func main() {
 	w := a.NewWindow("Audio Note LLM")
 	w.Resize(fyne.NewSize(1400, 900)) // Increased size to fully show output and new tab layout
 
+	p := panel.Panel{
+		Window: &w,
+	}
 	//--------------------------------------------------------------
 	// Initialize configuration and context
 	//--------------------------------------------------------------
@@ -238,20 +239,14 @@ func main() {
 	//--------------------------------------------------------------
 	aboutMenu := fyne.NewMenu("Help",
 		fyne.NewMenuItem("About Audio Note LLM", func() {
-			parms := panel.Panel{
-				Window: &w,
-			}
-			info.ShowAboutDialog(parms)
+			p.ShowAboutDialog()
 		}),
 	)
 
 	configMenu := fyne.NewMenu("Settings",
 		fyne.NewMenuItem("Configuration...", func() {
-			parms := panel.Panel{
-				Window:      &w,
-				OutputField: outputField,
-			}
-			panel.ShowConfigDialog(config, parms)
+			p.OutputField = outputField
+			p.ShowConfigDialog(config)
 		}),
 	)
 
@@ -407,14 +402,10 @@ func main() {
 				fmt.Printf("Could not set output directory: %v\n", err)
 			}
 		}
-		panel := appPanel.Panel{
-			CurrentDir:           currentDir,
-			OutputPathSelector:   outputPathSelector,
-			OutputDirectoryLabel: outputDirectoryLabel,
-			Window:               &w,
-		}
-		_, err := appPanel.OutputPathDialog(
-			&panel, config)
+		p.CurrentDir = currentDir
+		p.OutputPathSelector = outputPathSelector
+		p.OutputDirectoryLabel = outputDirectoryLabel
+		_, err := p.OutputPathDialog(config)
 
 		if err != nil {
 			fmt.Printf("Error opening file dialog: %v\n", err)
@@ -604,14 +595,11 @@ Please process the following audio transcript and create a %s:
 	//--------------------------------------------------------------
 	// Create right panel with tabs
 	//--------------------------------------------------------------
-	rightPanel := appPanel.RightPanel(
-		appPanel.Panel{
-			PromptLabel:      promptLabel,
-			PromptEditor:     promptEditor,
-			ResultField:      resultField,
-			SavePromptButton: savePromptButton,
-		},
-	)
+	p.PromptLabel = promptLabel
+	p.PromptEditor = promptEditor
+	p.ResultField = resultField
+	p.SavePromptButton = savePromptButton
+	rightPanel := p.RightPanel()
 
 	//--------------------------------------------------------------
 	// Create start button and processing logic

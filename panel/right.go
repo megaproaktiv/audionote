@@ -6,25 +6,25 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-func RightPanel(panel Panel) *container.AppTabs {
+func (p *Panel) RightPanel() *container.AppTabs {
 	rightPanel := container.NewAppTabs(
 		// Left tab: Prompt Editor
 		container.NewTabItem("Prompt Editor",
 			container.NewBorder(
 				// Top: Just the label
-				container.NewPadded(panel.PromptLabel),
+				container.NewPadded(p.PromptLabel),
 				// Bottom: Centered save button
 				container.NewPadded(
 					container.NewHBox(
 						layout.NewSpacer(),
-						panel.SavePromptButton,
+						p.SavePromptButton,
 						layout.NewSpacer(),
 					),
 				),
 				// Left, Right: nil
 				nil, nil,
 				// Center: Maximized scrollable editor
-				container.NewScroll(panel.PromptEditor),
+				container.NewScroll(p.PromptEditor),
 			),
 		),
 		// Right tab: Result
@@ -37,7 +37,7 @@ func RightPanel(panel Panel) *container.AppTabs {
 				// Left, Right: nil
 				nil, nil,
 				// Center: Scrollable result field
-				container.NewScroll(panel.ResultField),
+				container.NewScroll(p.ResultField),
 			),
 		),
 	)

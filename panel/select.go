@@ -10,11 +10,11 @@ import (
 	"github.com/megaproaktiv/audionote-config/configuration"
 )
 
-func OutputPathDialog(panel *Panel, config *configuration.Config) (*dialog.FileDialog, error) {
-	w := *panel.Window
+func (p *Panel) OutputPathDialog(config *configuration.Config) (*dialog.FileDialog, error) {
+	w := *p.Window
 	dialog := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
 		// Always restore original directory first
-		configuration.RestoreDirectory(panel.CurrentDir)
+		configuration.RestoreDirectory(p.CurrentDir)
 
 		if err != nil {
 			fmt.Printf("Error selecting output file: %v\n", err)
@@ -27,11 +27,11 @@ func OutputPathDialog(panel *Panel, config *configuration.Config) (*dialog.FileD
 
 		selectedPath := writer.URI().Path()
 		config.OutputPath = selectedPath
-		panel.OutputPathSelector.SetText(fmt.Sprintf("Selected: %s", filepath.Base(selectedPath)))
+		p.OutputPathSelector.SetText(fmt.Sprintf("Selected: %s", filepath.Base(selectedPath)))
 		fmt.Printf("Output path selected: %s\n", selectedPath)
 
 		// Update output directory label
-		panel.OutputDirectoryLabel.SetText(fmt.Sprintf("Output Directory: %s", filepath.Dir(selectedPath)))
+		p.OutputDirectoryLabel.SetText(fmt.Sprintf("Output Directory: %s", filepath.Dir(selectedPath)))
 		fmt.Printf("Updated output directory to: %s\n", filepath.Dir(selectedPath))
 	}, w)
 
