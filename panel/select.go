@@ -10,7 +10,7 @@ import (
 	"github.com/megaproaktiv/audionote-config/configuration"
 )
 
-func SelectButton(panel *Panel, config *configuration.Config) (*dialog.FileDialog, error) {
+func OutputPathDialog(panel *Panel, config *configuration.Config) (*dialog.FileDialog, error) {
 	w := *panel.Window
 	dialog := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
 		// Always restore original directory first

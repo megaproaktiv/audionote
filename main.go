@@ -21,7 +21,9 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/megaproaktiv/audionote-config/configuration"
+	"github.com/megaproaktiv/audionote-config/info"
 	"github.com/megaproaktiv/audionote-config/llm"
+	"github.com/megaproaktiv/audionote-config/panel"
 	appPanel "github.com/megaproaktiv/audionote-config/panel"
 	"github.com/megaproaktiv/audionote-config/translate"
 )
@@ -214,35 +216,6 @@ func checkForExistingTranscript(audioFilePath, bucket, language string) string {
 }
 
 // showAboutDialog displays the About dialog
-func showAboutDialog(w fyne.Window) {
-	aboutContent := widget.NewRichTextFromMarkdown(`# Audio Note LLM
-
-A desktop application for configuring and processing audio notes using Large Language Models.
-
-## Features
-• **Audio File Support**: Process MP3 and M4A files
-• **AI Processing Actions**: Choose from various processing templates
-• **Prompt Editor**: Edit and customize AI prompt templates
-• **Language Support**: Multiple language configurations
-• **AWS Integration**: S3 bucket and profile configuration
-• **Persistent Settings**: Automatic saving of user preferences
-
-## Technical Details
-• Built with **Go** programming language
-• UI framework: **Fyne v2**
-• Configuration: **Viper** with YAML storage
-• Cross-platform compatibility
-
-## Version
-**1.0.0** - Initial Release
-
----
-*Built with ❤️ for efficient audio note processing*`)
-
-	aboutDialog := dialog.NewCustom("About Audio Note LLM", "Close", aboutContent, w)
-	aboutDialog.Resize(fyne.NewSize(500, 400))
-	aboutDialog.Show()
-}
 
 // showConfigDialog displays the configuration dialog
 func showConfigDialog(w fyne.Window, config *configuration.Config, outputField *widget.Entry) {
@@ -391,7 +364,10 @@ func main() {
 	//--------------------------------------------------------------
 	aboutMenu := fyne.NewMenu("Help",
 		fyne.NewMenuItem("About Audio Note LLM", func() {
-			showAboutDialog(w)
+			parms := panel.Panel{
+				Window: &w,
+			}
+			info.ShowAboutDialog(parms)
 		}),
 	)
 
@@ -557,8 +533,9 @@ func main() {
 			CurrentDir:           currentDir,
 			OutputPathSelector:   outputPathSelector,
 			OutputDirectoryLabel: outputDirectoryLabel,
+			Window:               &w,
 		}
-		_, err := appPanel.SelectButton(
+		_, err := appPanel.OutputPathDialog(
 			&panel, config)
 
 		if err != nil {
