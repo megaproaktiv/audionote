@@ -2,6 +2,7 @@ package panel
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"fyne.io/fyne/v2"
@@ -12,7 +13,10 @@ import (
 
 func SelectButton(panel *Panel, config *configuration.Config) (*dialog.FileDialog, error) {
 	w := *panel.Window
-	dialog := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
+	// change Directory to panel.CurrentDir
+	os.Chdir(panel.CurrentDir)
+
+	dialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 		// Always restore original directory first
 		configuration.RestoreDirectory(panel.CurrentDir)
 
@@ -20,12 +24,12 @@ func SelectButton(panel *Panel, config *configuration.Config) (*dialog.FileDialo
 			fmt.Printf("Error selecting output file: %v\n", err)
 			return
 		}
-		if writer == nil {
+		if reader == nil {
 			return
 		}
-		defer writer.Close()
+		defer reader.Close()
 
-		selectedPath := writer.URI().Path()
+		selectedPath := reader.URI().Path()
 		config.OutputPath = selectedPath
 		panel.OutputPathSelector.SetText(fmt.Sprintf("Selected: %s", filepath.Base(selectedPath)))
 		fmt.Printf("Output path selected: %s\n", selectedPath)
