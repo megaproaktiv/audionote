@@ -1,0 +1,49 @@
+package panel
+
+import (
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/widget"
+)
+
+func (panel *Panel) ShowAboutDialog() {
+	w := panel.Window
+	aboutContent := widget.NewRichTextFromMarkdown(`# Audio Note LLM
+
+A desktop application for  processing audio notes using Large Language Models.
+
+## Features
+- **Audio File Support**: Process MP3 and M4A files
+- **AI Processing Actions**: Choose from various processing templates
+- **Prompt Editor**: Edit and customize AI prompt templates
+- **Language Support**: Multiple language configurations
+- **AWS Integration**: S3 bucket and profile configuration
+- **Persistent Settings**: Automatic saving of user preferences
+
+## Setup
+- Create S3 Bucket
+- Set Bedrock Modell access
+- configure s3 bucket and model in configuration dialog
+
+## Run
+
+- Choose Action prompt
+- Set output directory
+- choose mp3 or mp4 audio file
+
+## Technical Details
+- Built with **Go** programming language
+- UI framework: **Fyne v2**
+- Configuration: **Viper** with YAML storage
+- Cross-platform compatibility
+
+## Version
+**0.2.0** - Working realease
+
+---
+*Built with ❤️ for efficient audio note processing*`)
+
+	aboutDialog := dialog.NewCustom("About Audio Note LLM", "Close", aboutContent, *w)
+	aboutDialog.Resize(fyne.NewSize(500, 400))
+	aboutDialog.Show()
+}

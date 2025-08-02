@@ -6,26 +6,16 @@ import (
 	"log"
 	"os"
 
-	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/aws-sdk-go-v2/service/transcribe"
-
-	"github.com/aws/aws-sdk-go-v2/config"
+	awsutil "github.com/megaproaktiv/audionote-config/aws"
 )
 
 var Client *transcribe.Client
 
 func InitClient(ctx context.Context, profile string) error {
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithSharedConfigProfile(profile))
+	cfg, err := awsutil.LoadAndValidateAWSConfig(ctx, profile)
 	if err != nil {
-		return fmt.Errorf("failed to load AWS config: %w", err)
-	}
-
-	// Test AWS identity using STS GetCallerIdentity
-	stsClient := sts.NewFromConfig(cfg)
-	_, err = stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
-	if err != nil {
-		return fmt.Errorf("failed to verify AWS identity: %w", err)
+		return err
 	}
 
 	Client = transcribe.NewFromConfig(cfg)
