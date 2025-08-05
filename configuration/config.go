@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -24,6 +25,8 @@ type Config struct {
 	OutputLines    int    `mapstructure:"output_lines"`
 	OutputPath     string `mapstructure:"output_path"`
 }
+
+var ConfigPath string
 
 // LoadPromptFiles reads all prompt-*.txt files from the config directory
 func LoadPromptFiles() ([]string, error) {
@@ -47,17 +50,18 @@ func LoadPromptFiles() ([]string, error) {
 	return actionTypes, err
 }
 
-// InitConfig initializes Viper configuration and returns a Config struct
-func InitConfig() *Config {
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath("./config")
-
-	// Get user's Documents directory as default
+// InitConfigWithFS initializes Viper configuration with embedded filesystem and returns a Config struct
+func InitConfigWithFS(defaultConfigFS fs.FS) *Config {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		homeDir = "."
 	}
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+	ConfigPath = path.Join(homeDir, ".config", "audionote")
+	viper.AddConfigPath(ConfigPath)
+	fmt.Println("Config path:", ConfigPath)
+	// Get user's Documents directory as default
 	documentsDir := filepath.Join(homeDir, "Documents")
 
 	// Set defaults
@@ -75,6 +79,9 @@ func InitConfig() *Config {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			// Config file not found, create it
 			fmt.Println("Config file not found, creating new one...")
+
+			CreateConfigFile(defaultConfigFS)
+
 		} else {
 			fmt.Printf("Error reading config file: %v\n", err)
 		}
@@ -111,13 +118,7 @@ func (c *Config) Save() {
 	viper.Set("output_lines", c.OutputLines)
 	viper.Set("output_path", c.OutputPath)
 
-	// Ensure config directory exists
-	if err := os.MkdirAll("./config", 0755); err != nil {
-		fmt.Printf("Error creating config directory: %v\n", err)
-		return
-	}
-
-	if err := viper.WriteConfigAs("./config/config.yaml"); err != nil {
+	if err := viper.WriteConfigAs(path.Join(ConfigPath, "config.yaml")); err != nil {
 		fmt.Printf("Error writing config file: %v\n", err)
 	} else {
 		fmt.Println("Configuration saved successfully")
@@ -212,8 +213,8 @@ func (c *Config) TestDirectoryAccess() bool {
 // LoadPromptContent reads the content of a prompt file for the given action type
 func LoadPromptContent(actionType string) (string, error) {
 	filename := fmt.Sprintf("prompt-%s.txt", actionType)
-	filepath := filepath.Join("./config", filename)
-
+	filepath := filepath.Join(ConfigPath, filename)
+	fmt.Printf("Loading prompt file %s\n", filename)
 	content, err := os.ReadFile(filepath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read prompt file %s: %v", filename, err)
@@ -225,7 +226,7 @@ func LoadPromptContent(actionType string) (string, error) {
 // SavePromptContent saves the content to a prompt file for the given action type
 func SavePromptContent(actionType, content string) error {
 	filename := fmt.Sprintf("prompt-%s.txt", actionType)
-	filepath := filepath.Join("./config", filename)
+	filepath := filepath.Join(ConfigPath, filename)
 
 	// Ensure config directory exists
 	if err := os.MkdirAll("./config", 0755); err != nil {
@@ -243,4 +244,63 @@ func SavePromptContent(actionType, content string) error {
 // Contains checks if a slice contains a string
 func Contains(slice []string, item string) bool {
 	return slices.Contains(slice, item)
+}
+
+// First time config
+func CreateConfigFile(defaultConfigFS fs.FS) error {
+
+	// Ensure config directory exists
+	if err := os.MkdirAll(ConfigPath, 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %v", err)
+	}
+	fmt.Printf("Created directory %v\n", ConfigPath)
+
+	// Copy all files from embedded config-default directory
+	err := fs.WalkDir(defaultConfigFS, "config-default", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip the root directory
+		if path == "config-default" {
+			return nil
+		}
+
+		// Get the relative path within config-default
+		relPath, err := filepath.Rel("config-default", path)
+		if err != nil {
+			return fmt.Errorf("failed to get relative path: %v", err)
+		}
+
+		// Create the destination path
+		destPath := filepath.Join(ConfigPath, relPath)
+
+		if d.IsDir() {
+			// Create directory
+			if err := os.MkdirAll(destPath, 0755); err != nil {
+				return fmt.Errorf("failed to create directory %s: %v", destPath, err)
+			}
+			fmt.Printf("Created directory: %s\n", destPath)
+		} else {
+			// Copy file
+			content, err := fs.ReadFile(defaultConfigFS, path)
+			if err != nil {
+				return fmt.Errorf("failed to read embedded file %s: %v", path, err)
+			}
+
+			if err := os.WriteFile(destPath, content, 0644); err != nil {
+				return fmt.Errorf("failed to write file %s: %v", destPath, err)
+			}
+			fmt.Printf("Copied file: %s\n", destPath)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to copy default config files: %v", err)
+	}
+
+	fmt.Println("Successfully copied all default configuration files")
+	return nil
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,6 +26,9 @@ import (
 	"github.com/megaproaktiv/audionote-config/panel"
 	"github.com/megaproaktiv/audionote-config/translate"
 )
+
+//go:embed config-default/*
+var defaultConfigFS embed.FS
 
 // OutputCapture manages stdout redirection to a text widget
 type OutputCapture struct {
@@ -213,7 +217,7 @@ func main() {
 	//--------------------------------------------------------------
 	// Initialize configuration and context
 	//--------------------------------------------------------------
-	config := configuration.InitConfig()
+	config := configuration.InitConfigWithFS(defaultConfigFS)
 
 	//--------------------------------------------------------------
 	// Create output field for stdout capture
